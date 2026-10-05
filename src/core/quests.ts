@@ -1,5 +1,5 @@
 import { BUILDINGS, type BuildingType, type ItemId } from '../config/balance';
-import { incomePerMinute } from './sim';
+import { hasResearch, incomePerMinute } from './economy';
 import { getBuilding, invTotal } from './state';
 import type { GameState } from './types';
 
@@ -101,6 +101,7 @@ export function currentQuest(s: GameState): QuestDef | undefined {
 }
 
 export function isBuildingUnlocked(s: GameState, type: BuildingType): boolean {
+  if (!hasResearch(s, BUILDINGS[type].research)) return false;
   const q = BUILDINGS[type].unlockQuest;
   if (!q) return true;
   const qi = QUESTS.findIndex((x) => x.id === q);
@@ -114,6 +115,16 @@ export function checkQuests(s: GameState): QuestDef | null {
   s.quests.done.push(q.id);
   s.money += q.reward;
   return q;
+}
+
+/** all Phase-1 quests finished → the research tree, markets and contracts are the goals now */
+export function questsComplete(s: GameState): boolean {
+  return currentQuestIndex(s) >= QUESTS.length;
+}
+
+/** contracts and daily missions open up once the tutorial is behind the player */
+export function metaUnlocked(s: GameState): boolean {
+  return QUESTS.filter((q) => q.tutorial).every((q) => s.quests.done.includes(q.id));
 }
 
 export function skipTutorial(s: GameState) {

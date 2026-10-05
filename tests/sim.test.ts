@@ -107,7 +107,7 @@ describe('production chain', () => {
     if (!cm.ok || !plant.ok) throw new Error(JSON.stringify(plant));
     expect(createLink(s, cm.value.id, plant.value.id).ok).toBe(true);
     run(s, 30);
-    expect(s.power.gen).toBeGreaterThan(BALANCE.hqPower);
+    expect(s.power.gen).toBeGreaterThan(6);
   });
 
   it('warehouse stores items and passes them on', () => {

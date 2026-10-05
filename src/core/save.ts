@@ -1,4 +1,5 @@
-import { SAVE_VERSION } from './state';
+import { POWER } from '../config/balance';
+import { SAVE_VERSION, addRareDeposits, freshMarkets } from './state';
 import type { GameState } from './types';
 
 const KEY = 'ore-to-empire/save';
@@ -39,12 +40,32 @@ export function deserialize(json: string): GameState | null {
   }
 }
 
-/** Upgrades older saves to the current shape. Add a case per version bump. */
+/** Upgrades older saves to the current shape. Add a step per version bump. */
 export function migrate(data: GameState): GameState | null {
-  if (data.version > SAVE_VERSION) return null; // save from a newer build
-  // v1 is the first version — nothing to migrate yet.
-  data.version = SAVE_VERSION;
-  return data;
+  if (!data.version || data.version > SAVE_VERSION) return null; // corrupt, or from a newer build
+  const d = data as GameState & Record<string, unknown>;
+  if (d.version < 2) {
+    // Phase 1 → Phase 2/3/4: new systems start empty; sand & uranium appear on unbought land
+    addRareDeposits(d.world.deposits, d.world.size, d.seed);
+    d.maxSeenTime = d.lastSaved;
+    d.power = { ...d.power, battery: 0, batteryMax: 0, gen: d.power?.gen ?? POWER.hq };
+    d.stats = { ...d.stats, upgrades: 0, contracts: 0, research: 0, trips: 0, localEarned: d.stats.totalEarned ?? 0 };
+    d.research = { done: [], active: null };
+    d.markets = freshMarkets();
+    d.events = [];
+    d.nextEventAt = d.time + 300;
+    d.trendTimer = 0;
+    d.vehicles = [];
+    d.rng = (d.seed ^ 0x9e3779b9) >>> 0;
+    d.prestige = { count: 0, shares: 0, perks: {}, lifetimeEarned: d.stats.totalEarned ?? 0 };
+    d.contracts = { offers: [], active: [], refreshAt: 0 };
+    d.daily = { day: '', missions: [], bonusClaimed: false };
+    d.gems = 0;
+    d.boostUntil = 0;
+    d.offlineBonusHours = 0;
+    d.version = 2;
+  }
+  return d;
 }
 
 export const localSave: SaveStore = {

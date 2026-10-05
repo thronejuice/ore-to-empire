@@ -1,22 +1,31 @@
 import {
   BALANCE,
   ITEMS,
+  POWER,
   RECIPES,
   beltSpeed,
-  powerDraw,
-  speedMult,
-  warehouseCapacity,
+  levelPower,
+  levelSpeed,
+  storageCapacity,
+  type BuildingType,
   type ItemId,
+  type ResearchId,
 } from '../config/balance';
+import { tickContracts } from './contracts';
+import { globalSpeed, hasResearch, incomePerMinute, powerMult } from './economy';
+import { tickFleet } from './fleet';
+import { sell, tickMarkets } from './market';
+import { tickResearch } from './research';
 import { invTotal } from './state';
-import type { Belt, Building, GameState, Inventory } from './types';
+import type { Belt, Building, Contract, GameState, Inventory } from './types';
 
-export interface SimEvent {
-  type: 'sold';
-  buildingId: number;
-  item: ItemId;
-  amount: number;
-}
+export type SimEvent =
+  | { type: 'sold'; buildingId: number; item: ItemId; amount: number }
+  | { type: 'research'; id: ResearchId }
+  | { type: 'contract_done'; contract: Contract }
+  | { type: 'contract_expired'; contract: Contract };
+
+export { incomePerMinute };
 
 const add = (inv: Inventory, item: ItemId, n: number) => {
   inv[item] = (inv[item] ?? 0) + n;
@@ -27,38 +36,32 @@ const take = (inv: Inventory, item: ItemId, n: number) => {
   else inv[item] = v;
 };
 
+const FUEL: Partial<Record<BuildingType, { item: ItemId; burn: number; buffer: number; mw: number }>> = {
+  coal_plant: { item: 'coal', burn: POWER.coalBurnTime, buffer: POWER.coalBuffer, mw: POWER.coalPlant },
+  nuclear_plant: { item: 'fuel_rod', burn: POWER.nuclearBurnTime, buffer: POWER.nuclearBuffer, mw: POWER.nuclear },
+};
+
+const isCrafter = (t: BuildingType) => t === 'furnace' || t === 'assembler' || t === 'fabricator';
+const isStorage = (t: BuildingType) => t === 'warehouse' || t === 'dock';
+const isSeller = (t: BuildingType) => t === 'hq' || t === 'depot';
+
 /** Can this building ever accept this item type (ignoring how full it is)? */
 export function acceptsType(b: Building, item: ItemId): boolean {
-  switch (b.type) {
-    case 'hq':
-    case 'depot':
-      return ITEMS[item].price > 0;
-    case 'warehouse':
-      return true;
-    case 'coal_plant':
-      return item === 'coal';
-    case 'furnace':
-    case 'assembler':
-      return !!b.recipe && (RECIPES[b.recipe].inputs[item] ?? 0) > 0;
-    default:
-      return false;
-  }
+  if (isSeller(b.type) || isStorage(b.type)) return ITEMS[item].price > 0;
+  const fuel = FUEL[b.type];
+  if (fuel) return item === fuel.item;
+  if (isCrafter(b.type)) return !!b.recipe && (RECIPES[b.recipe].inputs[item] ?? 0) > 0;
+  return false;
 }
 
 /** Does it have room for one more of this item right now? */
 export function canAccept(b: Building, item: ItemId): boolean {
   if (!acceptsType(b, item)) return false;
-  switch (b.type) {
-    case 'hq':
-    case 'depot':
-      return true;
-    case 'warehouse':
-      return invTotal(b.input) < warehouseCapacity(b.level);
-    case 'coal_plant':
-      return (b.input.coal ?? 0) < BALANCE.coalPlantBuffer;
-    default:
-      return (b.input[item] ?? 0) < BALANCE.inputBufferPerItem;
-  }
+  if (isSeller(b.type)) return true;
+  if (isStorage(b.type)) return invTotal(b.input) < storageCapacity(b.type, b.level);
+  const fuel = FUEL[b.type];
+  if (fuel) return (b.input[item] ?? 0) < fuel.buffer;
+  return (b.input[item] ?? 0) < Math.max(BALANCE.inputBufferPerItem, (RECIPES[b.recipe!].inputs[item] ?? 0) * 3);
 }
 
 /** Items a building can send out on its belts. Warehouses send what they store. */
@@ -66,20 +69,13 @@ export function outbox(b: Building): Inventory {
   return b.type === 'warehouse' ? b.input : b.output;
 }
 
-export function sellPrice(item: ItemId): number {
-  return ITEMS[item].price;
-}
-
 function deliver(state: GameState, b: Building, item: ItemId, events?: SimEvent[]) {
-  if (b.type === 'hq' || b.type === 'depot') {
-    const price = sellPrice(item);
-    state.money += price;
-    state.stats.totalEarned += price;
-    add(state.stats.sold, item, 1);
-    state.stats.incomeBuckets[state.stats.incomeBuckets.length - 1] += price;
-    events?.push({ type: 'sold', buildingId: b.id, item, amount: price });
+  if (isSeller(b.type)) {
+    const amount = sell(state, 'local', item, 1);
+    events?.push({ type: 'sold', buildingId: b.id, item, amount });
   } else {
     add(b.input, item, 1);
+    if (isStorage(b.type)) b.recv = (b.recv ?? 0) + 1;
   }
 }
 
@@ -87,21 +83,53 @@ function wantsPower(b: Building): boolean {
   return b.status === 'working' || b.status === 'no_power';
 }
 
-export function updatePower(state: GameState) {
-  let gen = BALANCE.hqPower;
+export function updatePower(state: GameState, dt: number) {
+  let gen = POWER.hq;
   let demand = 0;
+  const batteries: Building[] = [];
+  const pm = powerMult(state);
   for (const b of state.buildings) {
-    if (b.type === 'coal_plant' && b.burn > 0) gen += BALANCE.coalPlantPower;
-    if (wantsPower(b)) demand += powerDraw(b.type, b.level);
+    const fuel = FUEL[b.type];
+    if (fuel && b.burn > 0) gen += fuel.mw;
+    if (b.type === 'solar') gen += POWER.solar;
+    if (b.type === 'battery') batteries.push(b);
+    if (wantsPower(b)) demand += levelPower(b.type, b.level) * pm;
   }
+
+  let supplied = gen;
+  if (batteries.length) {
+    if (gen >= demand) {
+      // charge with the surplus
+      let surplus = (gen - demand) * dt;
+      for (const bat of batteries) {
+        const room = POWER.batteryCapacity - (bat.charge ?? 0);
+        const put = Math.min(room, surplus, POWER.batteryRate * dt);
+        bat.charge = (bat.charge ?? 0) + put;
+        surplus -= put;
+        bat.status = put > 0 ? 'working' : 'idle';
+      }
+    } else {
+      // discharge to cover the deficit
+      let need = (demand - gen) * dt;
+      for (const bat of batteries) {
+        const out = Math.min(bat.charge ?? 0, need, POWER.batteryRate * dt);
+        bat.charge = (bat.charge ?? 0) - out;
+        need -= out;
+        supplied += out / Math.max(dt, 1e-9);
+        bat.status = out > 0 ? 'working' : 'no_fuel';
+      }
+    }
+  }
+
   state.power.gen = gen;
   state.power.demand = demand;
-  state.power.satisfaction = demand <= 0 ? 1 : Math.min(1, gen / demand);
+  state.power.satisfaction = demand <= 0 ? 1 : Math.min(1, supplied / demand);
+  state.power.battery = batteries.reduce((a, b) => a + (b.charge ?? 0), 0);
+  state.power.batteryMax = batteries.length * POWER.batteryCapacity;
 }
 
-function updateBuilding(state: GameState, b: Building, dt: number) {
+function updateBuilding(state: GameState, b: Building, dt: number, speed: number) {
   const sat = state.power.satisfaction;
-  const outTotal = invTotal(b.output);
 
   if (b.type === 'miner') {
     const dep = state.world.deposits[b.y * state.world.size + b.x];
@@ -109,12 +137,16 @@ function updateBuilding(state: GameState, b: Building, dt: number) {
       b.status = 'idle';
       return;
     }
-    if (outTotal >= BALANCE.outputBufferTotal) {
+    if (dep === 'uranium_ore' && !hasResearch(state, 'r_nuclear')) {
+      b.status = 'locked';
+      return;
+    }
+    if (invTotal(b.output) >= BALANCE.outputBufferTotal) {
       b.status = 'output_full';
       return;
     }
     b.status = 'working';
-    b.progress += (dt * sat * speedMult(b.level)) / BALANCE.minerTime;
+    b.progress += (dt * sat * speed * levelSpeed(b.level)) / BALANCE.minerTime;
     while (b.progress >= 1) {
       if (invTotal(b.output) >= BALANCE.outputBufferTotal) {
         b.progress = 1;
@@ -128,12 +160,16 @@ function updateBuilding(state: GameState, b: Building, dt: number) {
     return;
   }
 
-  if (b.type === 'furnace' || b.type === 'assembler') {
+  if (isCrafter(b.type)) {
     if (!b.recipe) {
       b.status = 'idle';
       return;
     }
     const r = RECIPES[b.recipe];
+    if (!hasResearch(state, r.research)) {
+      b.status = 'locked';
+      return;
+    }
     const outQty = invTotal(r.outputs as Inventory);
     const hasInputs = () => (Object.keys(r.inputs) as ItemId[]).every((i) => (b.input[i] ?? 0) >= (r.inputs[i] ?? 0));
     const tryStart = () => {
@@ -148,7 +184,7 @@ function updateBuilding(state: GameState, b: Building, dt: number) {
     };
     if (!tryStart()) return;
     b.status = 'working';
-    b.progress += (dt * sat * speedMult(b.level)) / r.time;
+    b.progress += (dt * sat * speed * levelSpeed(b.level)) / r.time;
     while (b.progress >= 1) {
       if (invTotal(b.output) + outQty > BALANCE.outputBufferTotal) {
         b.progress = 1;
@@ -169,38 +205,42 @@ function updateBuilding(state: GameState, b: Building, dt: number) {
     return;
   }
 
-  if (b.type === 'coal_plant') {
+  const fuel = FUEL[b.type];
+  if (fuel) {
     let t = dt;
     while (t > 0) {
       if (b.burn <= 0) {
-        if ((b.input.coal ?? 0) <= 0) {
+        if ((b.input[fuel.item] ?? 0) <= 0) {
           b.burn = 0;
           b.status = 'no_fuel';
           return;
         }
-        take(b.input, 'coal', 1);
-        b.burn += BALANCE.coalBurnTime;
+        take(b.input, fuel.item, 1);
+        b.burn += fuel.burn;
       }
       const used = Math.min(t, b.burn);
       b.burn -= used;
       t -= used;
     }
     b.status = 'working';
-    // keep burning flag on for the next power calculation if we just emptied it but have coal
-    if (b.burn <= 0 && (b.input.coal ?? 0) > 0) {
-      take(b.input, 'coal', 1);
-      b.burn += BALANCE.coalBurnTime;
+    if (b.burn <= 0 && (b.input[fuel.item] ?? 0) > 0) {
+      take(b.input, fuel.item, 1);
+      b.burn += fuel.burn;
     }
     return;
   }
 
+  if (b.type === 'solar') {
+    b.status = 'working';
+    return;
+  }
+  if (b.type === 'battery') return; // status set by updatePower
   b.status = 'idle';
 }
 
 function moveBelt(state: GameState, belt: Belt, dst: Building | undefined, dt: number, speed: number, events?: SimEvent[]) {
   const items = belt.items;
   const spacing = BALANCE.beltSpacing;
-  // deliver / advance front-to-back
   let i = 0;
   while (i < items.length) {
     const it = items[i];
@@ -209,7 +249,7 @@ function moveBelt(state: GameState, belt: Belt, dst: Building | undefined, dt: n
     if (i === 0 && it.pos >= belt.length - 1e-9 && dst && canAccept(dst, it.item)) {
       deliver(state, dst, it.item, events);
       items.shift();
-      continue; // the next item becomes the new front this same tick
+      continue;
     }
     i++;
   }
@@ -228,7 +268,6 @@ function pushOutputs(b: Building, outs: Belt[], buildingsById: Map<number, Build
     if (!dst) continue;
     const keys = Object.keys(box) as ItemId[];
     if (!keys.length) break;
-    // rotate the item choice too, so warehouses don't starve one product
     const start = (b.rr + k) % keys.length;
     for (let j = 0; j < keys.length; j++) {
       const item = keys[(start + j) % keys.length];
@@ -242,18 +281,30 @@ function pushOutputs(b: Building, outs: Belt[], buildingsById: Map<number, Build
   b.rr = (b.rr + 1) % 1024;
 }
 
+/** Everything that isn't the factory floor: markets, fleet, research, contracts. Cheap; also used by offline catch-up. */
+export function tickMacro(state: GameState, dt: number, events?: SimEvent[]) {
+  tickMarkets(state, dt);
+  tickFleet(state, dt);
+  const done = tickResearch(state, dt);
+  if (done) events?.push({ type: 'research', id: done });
+  const c = tickContracts(state);
+  for (const contract of c.completed) events?.push({ type: 'contract_done', contract });
+  for (const contract of c.expired) events?.push({ type: 'contract_expired', contract });
+}
+
 export function tick(state: GameState, dt: number, events?: SimEvent[]) {
   state.time += dt;
-  updatePower(state);
+  updatePower(state, dt);
 
-  for (const b of state.buildings) updateBuilding(state, b, dt);
+  const speed = globalSpeed(state);
+  for (const b of state.buildings) updateBuilding(state, b, dt, speed);
 
   const byId = new Map<number, Building>();
   for (const b of state.buildings) byId.set(b.id, b);
   const outs = new Map<number, Belt[]>();
-  const speed = beltSpeed(state.beltLevel);
+  const bs = beltSpeed(state.beltLevel);
   for (const belt of state.belts) {
-    moveBelt(state, belt, byId.get(belt.to), dt, speed, events);
+    moveBelt(state, belt, byId.get(belt.to), dt, bs, events);
     let list = outs.get(belt.from);
     if (!list) outs.set(belt.from, (list = []));
     list.push(belt);
@@ -263,7 +314,8 @@ export function tick(state: GameState, dt: number, events?: SimEvent[]) {
     if (list) pushOutputs(b, list, byId);
   }
 
-  // rolling one-minute income buckets
+  tickMacro(state, dt, events);
+
   const st = state.stats;
   st.bucketTime += dt;
   while (st.bucketTime >= 1) {
@@ -271,8 +323,4 @@ export function tick(state: GameState, dt: number, events?: SimEvent[]) {
     st.incomeBuckets.shift();
     st.incomeBuckets.push(0);
   }
-}
-
-export function incomePerMinute(state: GameState): number {
-  return state.stats.incomeBuckets.reduce((a, b) => a + b, 0);
 }

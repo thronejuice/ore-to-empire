@@ -4,12 +4,12 @@ import {
   ITEMS,
   RECIPES,
   beltUpgradeCost,
-  recipesFor,
   upgradeCost,
   type BuildingType,
   type ItemId,
   type RecipeId,
 } from '../config/balance';
+import { beltMaxLevel, hasResearch, recipeUnlocked, recipesFor } from './economy';
 import { beltPoints, findPath } from './pathfind';
 import { getBuilding, idx, inBounds, isUnlocked, makeBuilding, occupancy } from './state';
 import { acceptsType } from './sim';
@@ -36,6 +36,7 @@ export function canPlace(state: GameState, type: BuildingType, x: number, y: num
     }
   }
   if (type === 'miner' && !state.world.deposits[idx(state, x, y)]) return fail('err.needDeposit');
+  if (type === 'miner' && state.world.deposits[idx(state, x, y)] === 'uranium_ore' && !hasResearch(state, 'r_nuclear')) return fail('err.needResearch');
   if (state.money < def.cost) return fail('err.noMoney');
   return ok(undefined);
 }
@@ -44,7 +45,7 @@ export function placeBuilding(state: GameState, type: BuildingType, x: number, y
   const check = canPlace(state, type, x, y);
   if (!check.ok) return check;
   const b = makeBuilding(state, type, x, y);
-  const recipes = recipesFor(type);
+  const recipes = recipesFor(state, type);
   if (recipes.length) b.recipe = recipes[0];
   state.money -= BUILDINGS[type].cost;
   state.buildings.push(b);
@@ -143,17 +144,19 @@ export function upgradeBuilding(state: GameState, id: number): ActionResult<numb
   if (state.money < cost) return fail('err.noMoney');
   state.money -= cost;
   b.level++;
+  state.stats.upgrades++;
   return ok(b.level);
 }
 
 export function isUpgradable(b: Building): boolean {
-  return b.type === 'miner' || b.type === 'furnace' || b.type === 'assembler' || b.type === 'warehouse';
+  return ['miner', 'furnace', 'assembler', 'fabricator', 'warehouse', 'dock'].includes(b.type);
 }
 
 export function setRecipe(state: GameState, id: number, recipe: RecipeId): ActionResult<undefined> {
   const b = getBuilding(state, id);
   if (!b) return fail('err.notFound');
   if (RECIPES[recipe].building !== b.type) return fail('err.badRecipe');
+  if (!recipeUnlocked(state, recipe)) return fail('err.needResearch');
   if (b.recipe === recipe) return ok(undefined);
   b.recipe = recipe;
   b.input = {};
@@ -168,7 +171,7 @@ export function setRecipe(state: GameState, id: number, recipe: RecipeId): Actio
 }
 
 export function upgradeBelts(state: GameState): ActionResult<number> {
-  if (state.beltLevel >= BALANCE.beltMaxLevel) return fail('err.maxLevel');
+  if (state.beltLevel >= beltMaxLevel(state)) return fail('err.maxLevel');
   const cost = beltUpgradeCost(state.beltLevel);
   if (state.money < cost) return fail('err.noMoney');
   state.money -= cost;

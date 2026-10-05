@@ -1,7 +1,8 @@
-import { BALANCE, BUILDINGS, type BuildingType, type DepositId } from '../config/balance';
+import { BALANCE, BUILDINGS, CITY_ORDER, ITEMS, POWER, type BuildingType, type DepositId, type ItemId } from '../config/balance';
+import type { MarketState } from './types';
 import type { Building, GameState } from './types';
 
-export const SAVE_VERSION = 1;
+export const SAVE_VERSION = 2;
 
 export function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -84,7 +85,77 @@ function generateDeposits(size: number, seed: number): (DepositId | null)[] {
     } while (x >= s - 1 && x <= 3 * s && y >= s - 1 && y <= 3 * s);
     cluster(t, x, y, 6 + Math.floor(rand() * 6));
   }
+  addRareDeposits(deposits, size, seed);
   return deposits;
+}
+
+/**
+ * Sand and uranium (Phase 2) only appear on land you have to buy. Uses its own RNG
+ * stream so it can be added to Phase-1 worlds during save migration.
+ */
+export function addRareDeposits(deposits: (DepositId | null)[], size: number, seed: number) {
+  const rand = mulberry32(seed ^ 0x5bd1e995);
+  const p = BALANCE.plotSize;
+  const plots = size / p;
+  const edge: [number, number][] = [];
+  const corner: [number, number][] = [];
+  for (let py = 0; py < plots; py++)
+    for (let px = 0; px < plots; px++) {
+      const outer = px === 0 || py === 0 || px === plots - 1 || py === plots - 1;
+      if (!outer) continue;
+      const isCorner = (px === 0 || px === plots - 1) && (py === 0 || py === plots - 1);
+      (isCorner ? corner : edge).push([px, py]);
+    }
+  const pick = <T,>(arr: T[]) => arr.splice(Math.floor(rand() * arr.length), 1)[0];
+  const blob = (type: DepositId, px: number, py: number, n: number) => {
+    let x = px * p + 2 + Math.floor(rand() * (p - 4));
+    let y = py * p + 2 + Math.floor(rand() * (p - 4));
+    const cx = x;
+    const cy = y;
+    let placed = 0;
+    let guard = 0;
+    while (placed < n && guard++ < 300) {
+      const inPlot = x >= px * p && x < (px + 1) * p && y >= py * p && y < (py + 1) * p;
+      if (inPlot && deposits[y * size + x] === null) {
+        deposits[y * size + x] = type;
+        placed++;
+      }
+      const d = Math.floor(rand() * 4);
+      x += d === 0 ? 1 : d === 1 ? -1 : 0;
+      y += d === 2 ? 1 : d === 3 ? -1 : 0;
+      if (rand() < 0.35) {
+        x += Math.sign(cx - x);
+        y += Math.sign(cy - y);
+      }
+    }
+  };
+  for (let i = 0; i < 3; i++) {
+    const [px, py] = pick(edge);
+    blob('sand', px, py, 6);
+  }
+  for (let i = 0; i < 2; i++) {
+    const [px, py] = pick(corner);
+    blob('uranium_ore', px, py, 5);
+  }
+}
+
+export function freshMarkets(): Partial<Record<(typeof CITY_ORDER)[number], MarketState>> {
+  const out: Partial<Record<(typeof CITY_ORDER)[number], MarketState>> = {};
+  for (const c of CITY_ORDER) {
+    const sat: Partial<Record<ItemId, number>> = {};
+    const trend: Partial<Record<ItemId, number>> = {};
+    for (const i of Object.keys(ITEMS) as ItemId[]) {
+      sat[i] = 1;
+      trend[i] = 1;
+    }
+    out[c] = { sat, trend };
+  }
+  return out;
+}
+
+export function todayKey(now = Date.now()): string {
+  const d = new Date(now);
+  return `${d.getFullYear()}-${String(d.getMonth() + 1).padStart(2, '0')}-${String(d.getDate()).padStart(2, '0')}`;
 }
 
 export function newGame(seed = Math.floor(Math.random() * 1e9), now = Date.now()): GameState {
@@ -99,15 +170,40 @@ export function newGame(seed = Math.floor(Math.random() * 1e9), now = Date.now()
     money: BALANCE.startMoney,
     time: 0,
     lastSaved: now,
+    maxSeenTime: now,
     world: { size, deposits: generateDeposits(size, seed), plots },
     buildings: [],
     belts: [],
     nextId: 1,
     beltLevel: 1,
-    power: { gen: BALANCE.hqPower, demand: 0, satisfaction: 1 },
-    stats: { totalEarned: 0, sold: {}, produced: {}, incomeBuckets: new Array(60).fill(0), bucketTime: 0 },
+    power: { gen: POWER.hq, demand: 0, satisfaction: 1, battery: 0, batteryMax: 0 },
+    stats: {
+      totalEarned: 0,
+      sold: {},
+      produced: {},
+      incomeBuckets: new Array(60).fill(0),
+      bucketTime: 0,
+      upgrades: 0,
+      contracts: 0,
+      research: 0,
+      trips: 0,
+      localEarned: 0,
+    },
     quests: { done: [], tutorialSkipped: false },
     settings: { lang: 'th', sound: true },
+    research: { done: [], active: null },
+    markets: freshMarkets(),
+    events: [],
+    nextEventAt: 300,
+    trendTimer: 0,
+    vehicles: [],
+    rng: (seed ^ 0x9e3779b9) >>> 0,
+    prestige: { count: 0, shares: 0, perks: {}, lifetimeEarned: 0 },
+    contracts: { offers: [], active: [], refreshAt: 0 },
+    daily: { day: '', missions: [], bonusClaimed: false },
+    gems: 0,
+    boostUntil: 0,
+    offlineBonusHours: 0,
   };
   const hq = hqPosition(size);
   state.buildings.push(makeBuilding(state, 'hq', hq.x, hq.y));
@@ -175,4 +271,21 @@ export function invTotal(inv: Record<string, number | undefined>): number {
   let t = 0;
   for (const k in inv) t += inv[k] ?? 0;
   return t;
+}
+
+/** Deterministic RNG stored in the save, so markets behave the same in tests and offline catch-up. */
+export function rand(state: GameState): number {
+  state.rng = (state.rng + 0x6d2b79f5) >>> 0;
+  let t = state.rng;
+  t = Math.imul(t ^ (t >>> 15), t | 1);
+  t ^= t + Math.imul(t ^ (t >>> 7), t | 61);
+  return ((t ^ (t >>> 14)) >>> 0) / 4294967296;
+}
+
+export function plotsPerRow(state: GameState) {
+  return state.world.size / BALANCE.plotSize;
+}
+
+export function ownedPlots(state: GameState) {
+  return state.world.plots.filter(Boolean).length;
 }
