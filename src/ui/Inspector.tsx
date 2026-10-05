@@ -1,0 +1,211 @@
+import { useEffect, useState } from 'react';
+import {
+  BALANCE,
+  BUILDINGS,
+  RECIPES,
+  powerDraw,
+  recipesFor,
+  speedMult,
+  upgradeCost,
+  warehouseCapacity,
+  type ItemId,
+} from '../config/balance';
+import { isUpgradable, linkCarriesIn, totalInvested } from '../core/actions';
+import { getBuilding, invTotal } from '../core/state';
+import { fmtMoney, fmtNum } from '../i18n';
+import { useGame, useHighlight, useT } from './hooks';
+import { BuildingIcon, Inv, ItemIcon } from './icons';
+
+export function Inspector() {
+  const game = useGame();
+  const t = useT();
+  const b = game.selectedBuilding();
+  const [confirm, setConfirm] = useState(false);
+  const linkHi = useHighlight('link-btn');
+  useEffect(() => setConfirm(false), [b?.id]);
+  if (!b || game.ui.mode.kind !== 'select') return null;
+
+  const s = game.state;
+  const def = BUILDINGS[b.type];
+  const outs = s.belts.filter((x) => x.from === b.id);
+  const ins = s.belts.filter((x) => x.to === b.id);
+  const sm = speedMult(b.level);
+  const nextCost = upgradeCost(b.type, b.level);
+  const canUp = isUpgradable(b) && b.level < BALANCE.maxBuildingLevel;
+  const refund = Math.floor(totalInvested(b) * BALANCE.refundRate);
+  const statusClass = b.status === 'working' ? 'good' : b.status === 'output_full' || b.status === 'no_fuel' ? 'bad' : 'warn';
+
+  let body: React.ReactNode = null;
+  if (b.type === 'miner') {
+    const dep = s.world.deposits[b.y * s.world.size + b.x] as ItemId | null;
+    body = (
+      <div className="kv">
+        <span>{t('ui.extracts')}</span>
+        <span>
+          {dep && <ItemIcon item={dep} />} {dep ? t(`item.${dep}`) : '-'} · <span className="mono">{fmtNum((60 / BALANCE.minerTime) * sm)}/min</span>
+        </span>
+        <span>{t('ui.output')}</span>
+        <Inv inv={b.output} empty={t('ui.empty')} />
+      </div>
+    );
+  } else if (b.type === 'furnace' || b.type === 'assembler') {
+    const r = b.recipe ? RECIPES[b.recipe] : null;
+    body = (
+      <>
+        <div className="section-label">{t('ui.recipe')}</div>
+        <div className="recipes">
+          {recipesFor(b.type).map((rid) => {
+            const rr = RECIPES[rid];
+            return (
+              <button key={rid} className={`recipe ${b.recipe === rid ? 'active' : ''}`} onClick={() => game.setRecipe(b.id, rid)}>
+                {(Object.keys(rr.inputs) as ItemId[]).map((i) => (
+                  <span key={i} className="inv-item">
+                    <ItemIcon item={i} />
+                    {rr.inputs[i]}
+                  </span>
+                ))}
+                <span className="arrow">→</span>
+                {(Object.keys(rr.outputs) as ItemId[]).map((i) => (
+                  <span key={i} className="inv-item">
+                    <ItemIcon item={i} />
+                    {rr.outputs[i]}
+                  </span>
+                ))}
+                <span className="recipe-name">{t(`item.${Object.keys(rr.outputs)[0]}`)}</span>
+              </button>
+            );
+          })}
+        </div>
+        <div className="kv">
+          <span>{t('ui.input')}</span>
+          <Inv inv={b.input} empty={t('ui.empty')} />
+          <span>{t('ui.output')}</span>
+          <Inv inv={b.output} empty={t('ui.empty')} />
+          {r && (
+            <>
+              <span>{t('ui.speed')}</span>
+              <span className="mono">
+                {fmtNum((60 / r.time) * sm * invTotal(r.outputs as Record<string, number>))}/min
+              </span>
+            </>
+          )}
+        </div>
+        <div className="progress">
+          <span className="fill" style={{ width: `${Math.min(100, b.progress * 100)}%` }} />
+        </div>
+      </>
+    );
+  } else if (b.type === 'warehouse') {
+    const cap = warehouseCapacity(b.level);
+    const total = invTotal(b.input);
+    body = (
+      <div className="kv">
+        <span>{t('ui.capacity')}</span>
+        <span className="mono">
+          {total} / {cap}
+        </span>
+        <span>{t('ui.stored')}</span>
+        <Inv inv={b.input} empty={t('ui.empty')} />
+      </div>
+    );
+  } else if (b.type === 'coal_plant') {
+    body = (
+      <div className="kv">
+        <span>{t('ui.fuel')}</span>
+        <Inv inv={b.input} empty={t('ui.empty')} />
+        <span>{t('ui.power')}</span>
+        <span className={`mono ${b.burn > 0 ? 'good' : 'bad'}`}>{b.burn > 0 ? `+${BALANCE.coalPlantPower}` : '0'} MW</span>
+      </div>
+    );
+  } else {
+    body = <p className="dim small">{t(`bd.${b.type}`, { mw: BALANCE.hqPower })}</p>;
+  }
+
+  const beltRow = (beltId: number, otherId: number, dir: 'out' | 'in') => {
+    const other = getBuilding(s, otherId);
+    if (!other) return null;
+    const src = dir === 'out' ? b : other;
+    const dst = dir === 'out' ? other : b;
+    const carries = linkCarriesIn(s, src, dst);
+    return (
+      <li key={beltId}>
+        <span className="belt-dir">{dir === 'out' ? '→' : '←'}</span>
+        <button className="belt-target" onClick={() => game.select(other.id)}>
+          {t(`b.${other.type}`)}
+        </button>
+        <span className="belt-carries">
+          {carries.length ? carries.slice(0, 3).map((i) => <ItemIcon key={i} item={i} />) : <span className="bad small">✕</span>}
+        </span>
+        <button className="icon-btn small" onClick={() => game.removeBelt(beltId)} aria-label={t('ui.removeBelt')} title={t('ui.removeBelt')}>
+          ✕
+        </button>
+      </li>
+    );
+  };
+
+  return (
+    <aside className="sheet inspector" role="dialog">
+      <div className="sheet-head">
+        <BuildingIcon type={b.type} size={40} />
+        <div className="insp-title">
+          <h2>
+            {t(`b.${b.type}`)} {isUpgradable(b) && <span className="lv mono">{t('ui.level', { n: b.level })}</span>}
+          </h2>
+          {b.type !== 'hq' && b.type !== 'depot' && <span className={`status ${statusClass}`}>● {t(`status.${b.status}`)}</span>}
+        </div>
+        <button className="icon-btn" onClick={() => game.select(null)} aria-label={t('ui.close')}>
+          ✕
+        </button>
+      </div>
+
+      <div className="sheet-body">
+        {body}
+        {def.power > 0 && (
+          <div className="kv">
+            <span>{t('ui.powerUse')}</span>
+            <span className="mono">⚡ {fmtNum(powerDraw(b.type, b.level))} MW</span>
+          </div>
+        )}
+
+        {(outs.length > 0 || ins.length > 0) && (
+          <>
+            <div className="section-label">
+              {t('ui.belts')} · {t('ui.incoming')} {ins.length}/{def.maxIn} · {t('ui.outgoing')} {outs.length}/{def.maxOut}
+            </div>
+            <ul className="belt-list">
+              {outs.map((x) => beltRow(x.id, x.to, 'out'))}
+              {ins.map((x) => beltRow(x.id, x.from, 'in'))}
+            </ul>
+          </>
+        )}
+      </div>
+
+      <div className="sheet-actions">
+        {def.maxOut > 0 && (
+          <button className={`btn primary ${linkHi ? 'tut-pulse' : ''}`} onClick={() => game.startLink(b.id)} data-tut="link-btn">
+            ⇢ {t('ui.link')}
+          </button>
+        )}
+        {isUpgradable(b) && (
+          <button className="btn" disabled={!canUp || s.money < nextCost} onClick={() => game.upgrade(b.id)}>
+            {canUp ? (
+              <>
+                ⇪ {t('ui.upgradeTo', { n: b.level + 1 })} <span className="mono">{fmtMoney(nextCost)}</span>
+              </>
+            ) : (
+              t('ui.max')
+            )}
+          </button>
+        )}
+        {b.type !== 'hq' && (
+          <button
+            className={`btn danger ${confirm ? 'armed' : ''}`}
+            onClick={() => (confirm ? game.demolish(b.id) : setConfirm(true))}
+          >
+            {confirm ? t('ui.removeConfirm', { refund }) : `🗑 ${t('ui.remove')}`}
+          </button>
+        )}
+      </div>
+    </aside>
+  );
+}

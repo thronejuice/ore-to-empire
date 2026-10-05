@@ -1,0 +1,177 @@
+import {
+  BALANCE,
+  BUILDINGS,
+  ITEMS,
+  RECIPES,
+  beltUpgradeCost,
+  recipesFor,
+  upgradeCost,
+  type BuildingType,
+  type ItemId,
+  type RecipeId,
+} from '../config/balance';
+import { beltPoints, findPath } from './pathfind';
+import { getBuilding, idx, inBounds, isUnlocked, makeBuilding, occupancy } from './state';
+import { acceptsType } from './sim';
+import type { Building, GameState } from './types';
+
+/** Result of an action: ok, or a translation key explaining why not. */
+export type ActionResult<T = undefined> = { ok: true; value: T } | { ok: false; reason: string };
+
+const ok = <T>(value: T): ActionResult<T> => ({ ok: true, value });
+const fail = (reason: string): ActionResult<never> => ({ ok: false, reason });
+
+export function canPlace(state: GameState, type: BuildingType, x: number, y: number): ActionResult<undefined> {
+  const def = BUILDINGS[type];
+  const occ = occupancy(state);
+  for (let dy = 0; dy < def.h; dy++) {
+    for (let dx = 0; dx < def.w; dx++) {
+      const cx = x + dx;
+      const cy = y + dy;
+      if (!inBounds(state, cx, cy)) return fail('err.outOfBounds');
+      if (!isUnlocked(state, cx, cy)) return fail('err.locked');
+      const i = idx(state, cx, cy);
+      if (occ.building[i]) return fail('err.occupied');
+      if (occ.belts[i]) return fail('err.beltHere');
+    }
+  }
+  if (type === 'miner' && !state.world.deposits[idx(state, x, y)]) return fail('err.needDeposit');
+  if (state.money < def.cost) return fail('err.noMoney');
+  return ok(undefined);
+}
+
+export function placeBuilding(state: GameState, type: BuildingType, x: number, y: number): ActionResult<Building> {
+  const check = canPlace(state, type, x, y);
+  if (!check.ok) return check;
+  const b = makeBuilding(state, type, x, y);
+  const recipes = recipesFor(type);
+  if (recipes.length) b.recipe = recipes[0];
+  state.money -= BUILDINGS[type].cost;
+  state.buildings.push(b);
+  return ok(b);
+}
+
+export function removeBuilding(state: GameState, id: number): ActionResult<number> {
+  const b = getBuilding(state, id);
+  if (!b) return fail('err.notFound');
+  if (b.type === 'hq') return fail('err.cantRemoveHq');
+  let refund = Math.floor(totalInvested(b) * BALANCE.refundRate);
+  for (const belt of state.belts.filter((x) => x.from === id || x.to === id)) {
+    refund += Math.floor(belt.path.length * BALANCE.beltCostPerTile * BALANCE.refundRate);
+  }
+  state.belts = state.belts.filter((x) => x.from !== id && x.to !== id);
+  state.buildings = state.buildings.filter((x) => x.id !== id);
+  state.money += refund;
+  return ok(refund);
+}
+
+export function totalInvested(b: Building): number {
+  let sum = BUILDINGS[b.type].cost;
+  for (let l = 1; l < b.level; l++) sum += upgradeCost(b.type, l);
+  return sum;
+}
+
+/** Item types the source could send that the destination would take. */
+export function linkCarries(src: Building, dst: Building): ItemId[] {
+  let produces: ItemId[];
+  if (src.type === 'warehouse') produces = Object.keys(ITEMS) as ItemId[];
+  else if (src.type === 'miner') produces = []; // filled by caller via deposit
+  else if (src.recipe) produces = Object.keys(RECIPES[src.recipe].outputs) as ItemId[];
+  else produces = [];
+  return produces.filter((i) => acceptsType(dst, i));
+}
+
+export function linkCarriesIn(state: GameState, src: Building, dst: Building): ItemId[] {
+  if (src.type === 'miner') {
+    const dep = state.world.deposits[idx(state, src.x, src.y)];
+    return dep && acceptsType(dst, dep) ? [dep] : [];
+  }
+  return linkCarries(src, dst);
+}
+
+export interface LinkPlan {
+  path: [number, number][];
+  cost: number;
+  carries: ItemId[];
+}
+
+export function planLink(state: GameState, fromId: number, toId: number): ActionResult<LinkPlan> {
+  const from = getBuilding(state, fromId);
+  const to = getBuilding(state, toId);
+  if (!from || !to) return fail('err.notFound');
+  if (from.id === to.id) return fail('err.sameBuilding');
+  const fdef = BUILDINGS[from.type];
+  const tdef = BUILDINGS[to.type];
+  if (fdef.maxOut === 0) return fail('err.noOutput');
+  if (tdef.maxIn === 0) return fail('err.noInput');
+  if (state.belts.some((b) => b.from === from.id && b.to === to.id)) return fail('err.alreadyLinked');
+  if (state.belts.filter((b) => b.from === from.id).length >= fdef.maxOut) return fail('err.maxOut');
+  if (state.belts.filter((b) => b.to === to.id).length >= tdef.maxIn) return fail('err.maxIn');
+  const path = findPath(state, from, to);
+  if (!path) return fail('err.noPath');
+  const cost = Math.max(1, path.length) * BALANCE.beltCostPerTile;
+  return ok({ path, cost, carries: linkCarriesIn(state, from, to) });
+}
+
+export function createLink(state: GameState, fromId: number, toId: number): ActionResult<LinkPlan> {
+  const plan = planLink(state, fromId, toId);
+  if (!plan.ok) return plan;
+  if (state.money < plan.value.cost) return fail('err.noMoney');
+  const from = getBuilding(state, fromId)!;
+  const to = getBuilding(state, toId)!;
+  const { points, length } = beltPoints(from, to, plan.value.path);
+  state.money -= plan.value.cost;
+  state.belts.push({ id: state.nextId++, from: fromId, to: toId, path: plan.value.path, points, length, items: [] });
+  return plan;
+}
+
+export function removeLink(state: GameState, beltId: number): ActionResult<number> {
+  const belt = state.belts.find((b) => b.id === beltId);
+  if (!belt) return fail('err.notFound');
+  const refund = Math.floor(Math.max(1, belt.path.length) * BALANCE.beltCostPerTile * BALANCE.refundRate);
+  state.belts = state.belts.filter((b) => b.id !== beltId);
+  state.money += refund;
+  return ok(refund);
+}
+
+export function upgradeBuilding(state: GameState, id: number): ActionResult<number> {
+  const b = getBuilding(state, id);
+  if (!b) return fail('err.notFound');
+  if (!isUpgradable(b)) return fail('err.notUpgradable');
+  if (b.level >= BALANCE.maxBuildingLevel) return fail('err.maxLevel');
+  const cost = upgradeCost(b.type, b.level);
+  if (state.money < cost) return fail('err.noMoney');
+  state.money -= cost;
+  b.level++;
+  return ok(b.level);
+}
+
+export function isUpgradable(b: Building): boolean {
+  return b.type === 'miner' || b.type === 'furnace' || b.type === 'assembler' || b.type === 'warehouse';
+}
+
+export function setRecipe(state: GameState, id: number, recipe: RecipeId): ActionResult<undefined> {
+  const b = getBuilding(state, id);
+  if (!b) return fail('err.notFound');
+  if (RECIPES[recipe].building !== b.type) return fail('err.badRecipe');
+  if (b.recipe === recipe) return ok(undefined);
+  b.recipe = recipe;
+  b.input = {};
+  b.crafting = false;
+  b.progress = 0;
+  // items already on incoming belts that no longer fit stay there until the link is removed;
+  // clear them so nothing jams forever.
+  for (const belt of state.belts) {
+    if (belt.to === b.id) belt.items = belt.items.filter((it) => acceptsType(b, it.item));
+  }
+  return ok(undefined);
+}
+
+export function upgradeBelts(state: GameState): ActionResult<number> {
+  if (state.beltLevel >= BALANCE.beltMaxLevel) return fail('err.maxLevel');
+  const cost = beltUpgradeCost(state.beltLevel);
+  if (state.money < cost) return fail('err.noMoney');
+  state.money -= cost;
+  state.beltLevel++;
+  return ok(state.beltLevel);
+}
