@@ -1,16 +1,30 @@
 import { useState } from 'react';
 import { BALANCE, ITEMS, beltSpeed, beltUpgradeCost, type ItemId } from '../config/balance';
+import { beltMaxLevel } from '../core/economy';
 import { fmtDuration, fmtMoney, fmtNum } from '../i18n';
 import { useGame, useHighlight, useT } from './hooks';
 import { Inv, ItemIcon } from './icons';
 
-function Modal({ title, children, onClose }: { title: string; children: React.ReactNode; onClose: () => void }) {
+export function Modal({
+  title,
+  children,
+  onClose,
+  wide,
+  head,
+}: {
+  title: string;
+  children: React.ReactNode;
+  onClose: () => void;
+  wide?: boolean;
+  head?: React.ReactNode;
+}) {
   const t = useT();
   return (
     <div className="modal-backdrop" onClick={onClose}>
-      <div className="modal" role="dialog" onClick={(e) => e.stopPropagation()}>
+      <div className={`modal ${wide ? 'wide' : ''}`} role="dialog" onClick={(e) => e.stopPropagation()}>
         <div className="sheet-head">
           <h2>{title}</h2>
+          {head}
           <button className="icon-btn" onClick={onClose} aria-label={t('ui.close')}>
             ✕
           </button>
@@ -28,7 +42,7 @@ export function UpgradesPanel() {
   if (game.ui.panel !== 'upgrades') return null;
   const s = game.state;
   const lvl = s.beltLevel;
-  const max = lvl >= BALANCE.beltMaxLevel;
+  const max = lvl >= beltMaxLevel(s);
   const cost = beltUpgradeCost(lvl);
   const rate = (l: number) => fmtNum(beltSpeed(l) / BALANCE.beltSpacing);
   return (
@@ -106,6 +120,17 @@ export function SettingsPanel() {
         </div>
       </div>
       <div className="setting">
+        <span>{t('ui.sound')}</span>
+        <div className="seg">
+          <button className={game.state.settings.sound ? 'active' : ''} onClick={() => game.setSound(true)}>
+            {t('ui.on')}
+          </button>
+          <button className={!game.state.settings.sound ? 'active' : ''} onClick={() => game.setSound(false)}>
+            {t('ui.off')}
+          </button>
+        </div>
+      </div>
+      <div className="setting">
         <span className="dim small">{t('ui.zoomHint')}</span>
       </div>
       <div className="setting">
@@ -113,7 +138,7 @@ export function SettingsPanel() {
           {confirm ? t('ui.resetConfirm') : t('ui.resetGame')}
         </button>
       </div>
-      <p className="dim small version">Ore to Empire · Phase 1 · v0.1.0</p>
+      <p className="dim small version">Ore to Empire · v0.4.0</p>
     </Modal>
   );
 }
@@ -136,6 +161,9 @@ export function OfflineModal() {
         <div className="welcome-items">
           <Inv inv={r.sold} empty="" />
         </div>
+        {r.researchDone.length > 0 && (
+          <p className="small good">{t('ui.offlineResearch', { list: r.researchDone.map((id) => t(`r.${id}.t`)).join(', ') })}</p>
+        )}
         <button className="btn primary big" onClick={() => game.dismissOffline()}>
           {t('ui.collect')}
         </button>

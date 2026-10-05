@@ -1,4 +1,4 @@
-import { BALANCE, BUILDINGS, BUILD_MENU_ORDER } from '../config/balance';
+import { BUILDINGS, BUILD_MENU_ORDER, POWER } from '../config/balance';
 import { isBuildingUnlocked } from '../core/quests';
 import { fmtMoney, fmtNum } from '../i18n';
 import { useGame, useHighlight, useT } from './hooks';
@@ -12,7 +12,10 @@ function BuildCard({ type }: { type: BuildingType }) {
   const unlocked = isBuildingUnlocked(game.state, type);
   const afford = game.state.money >= def.cost;
   const hi = useHighlight(`build-${type}`);
-  const desc = t(`bd.${type}`, { mw: type === 'hq' ? BALANCE.hqPower : BALANCE.coalPlantPower });
+  const mw = type === 'solar' ? POWER.solar : type === 'nuclear_plant' ? POWER.nuclear : POWER.coalPlant;
+  const desc = t(`bd.${type}`, { mw });
+  const needs = def.research && !game.state.research.done.includes(def.research) ? def.research : null;
+  if (needs && !game.state.research.done.length && type !== 'dock') return null; // keep the menu short early on
   return (
     <button
       className={`build-card ${!unlocked ? 'locked' : ''} ${!afford ? 'poor' : ''} ${hi ? 'tut-pulse' : ''}`}
@@ -27,7 +30,7 @@ function BuildCard({ type }: { type: BuildingType }) {
           <span className="bc-cost mono">{fmtMoney(def.cost)}</span>
           <span className="bc-meta">
             {def.power > 0 && <span>⚡{fmtNum(def.power)} MW</span>}
-            {type === 'coal_plant' && <span className="good">+{BALANCE.coalPlantPower} MW</span>}
+            {(type === 'coal_plant' || type === 'solar' || type === 'nuclear_plant') && <span className="good">+{mw} MW</span>}
             {(def.w > 1 || def.h > 1) && (
               <span>
                 {def.w}×{def.h}
@@ -37,7 +40,7 @@ function BuildCard({ type }: { type: BuildingType }) {
           <span className="bc-desc">{desc}</span>
         </>
       ) : (
-        <span className="bc-desc">🔒 {t('ui.unlocksAt')}</span>
+        <span className="bc-desc">🔒 {needs ? t('ui.researchLocked', { name: t(`r.${needs}.t`) }) : t('ui.unlocksAt')}</span>
       )}
     </button>
   );

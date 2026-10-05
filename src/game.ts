@@ -1,4 +1,5 @@
-import { BALANCE, BUILDINGS, type BuildingType, type RecipeId } from './config/balance';
+import { BALANCE, BUILDINGS, type BuildingType, type CityId, type ItemId, type RecipeId, type ResearchId, type VehicleType } from './config/balance';
+import type { GemItemId, PerkId } from './config/meta';
 import {
   createLink,
   placeBuilding,
@@ -11,13 +12,21 @@ import {
   type ActionResult,
   type LinkPlan,
 } from './core/actions';
+import { abandonContract, acceptContract, rerollOffers } from './core/contracts';
+import { claimBonus, claimMission, ensureDaily } from './core/daily';
+import { buyVehicle, sellVehicle, setRoute } from './core/fleet';
+import { applyGemItem, gemItemAvailable, spendLocalGems } from './core/gems';
+import { buyPlot, plotOf } from './core/land';
 import { applyOffline, type OfflineReport } from './core/offline';
+import { buyPerk, canPrestige, prestige } from './core/prestige';
 import { checkQuests, isBuildingUnlocked, skipTutorial, type QuestDef } from './core/quests';
+import { cancelResearch, startResearch } from './core/research';
 import { localSave, type SaveStore } from './core/save';
 import { tick, type SimEvent } from './core/sim';
-import { buildingAt, getBuilding, newGame } from './core/state';
+import { buildingAt, getBuilding, isUnlocked, newGame } from './core/state';
 import type { GameState } from './core/types';
 import { translate, type Lang } from './i18n';
+import { sfx, setSoundEnabled, type Sfx } from './audio';
 
 export type Mode = { kind: 'select' } | { kind: 'build'; type: BuildingType } | { kind: 'link'; from: number | null };
 
@@ -27,40 +36,70 @@ export interface Toast {
   kind: 'info' | 'error' | 'success';
 }
 
+export type Panel =
+  | 'none'
+  | 'build'
+  | 'menu'
+  | 'upgrades'
+  | 'settings'
+  | 'stats'
+  | 'research'
+  | 'markets'
+  | 'fleet'
+  | 'contracts'
+  | 'daily'
+  | 'prestige'
+  | 'shop'
+  | 'account';
+
 export interface UiState {
   mode: Mode;
   selected: number | null;
+  plot: [number, number] | null;
   hover: [number, number] | null;
   linkPreview: { to: number; plan: ActionResult<LinkPlan> } | null;
   toasts: Toast[];
   offline: OfflineReport | null;
   questDone: QuestDef | null;
-  panel: 'none' | 'build' | 'upgrades' | 'settings' | 'stats';
+  panel: Panel;
+  busy: boolean; // waiting on the server
+}
+
+/**
+ * Optional online layer (Phase 4). When present and signed in, gems live on the
+ * server: spending and daily-gem claims go through it. Guests use local gems.
+ */
+export interface OnlineBridge {
+  signedIn(): boolean;
+  spendGems(item: GemItemId): Promise<{ ok: true; gems: number } | { ok: false; reason: string }>;
+  claimDaily(day: string, key: string, gems: number): Promise<{ ok: true; gems: number } | { ok: false; reason: string }>;
+  /** persists immediately (used after prestige / big changes) */
+  saveNow?(state: GameState): void;
 }
 
 type Listener = () => void;
 
 /**
  * Owns the GameState, runs the fixed-step simulation, and exposes every player
- * action. React subscribes for HUD updates; the Pixi renderer reads state directly
- * every frame.
+ * action. React subscribes for HUD updates; the Pixi renderer reads state directly.
  */
 export class Game {
   state: GameState;
   ui: UiState = {
     mode: { kind: 'select' },
     selected: null,
+    plot: null,
     hover: null,
     linkPreview: null,
     toasts: [],
     offline: null,
     questDone: null,
     panel: 'none',
+    busy: false,
   };
-  /** sim events since the renderer last drained them (sales → floating text) */
   events: SimEvent[] = [];
-  /** bumps whenever something structural changes (renderer redraws static layers) */
   structureVersion = 0;
+  online: OnlineBridge | null = null;
 
   private listeners = new Set<Listener>();
   private version = 0;
@@ -75,10 +114,15 @@ export class Game {
   constructor(private store: SaveStore = localSave) {
     const loaded = store.load();
     this.state = loaded ?? newGame();
-    if (loaded) {
-      const away = (Date.now() - loaded.lastSaved) / 1000;
-      this.catchUp(away);
-    }
+    setSoundEnabled(this.state.settings.sound);
+    if (loaded) this.catchUp(this.awaySince(loaded.lastSaved));
+    ensureDaily(this.state);
+  }
+
+  /** seconds since `since`, refusing credit if the clock went backwards */
+  awaySince(since: number, now = Date.now()): number {
+    if (now < this.state.maxSeenTime - 60_000) return 0; // clock moved back: no credit
+    return (now - since) / 1000;
   }
 
   // ---------------------------------------------------------------- loop
@@ -104,22 +148,24 @@ export class Game {
     let elapsed = (now - this.lastFrame) / 1000;
     this.lastFrame = now;
     if (elapsed > 5) {
-      // the tab was throttled / asleep — treat as offline time
       this.catchUp(elapsed);
       elapsed = 0;
     }
     this.acc += Math.min(elapsed, 0.25);
     const dt = BALANCE.tickSeconds;
+    const first = this.events.length;
     while (this.acc >= dt) {
       tick(this.state, dt, this.events);
       this.acc -= dt;
     }
-    if (this.events.length > 200) this.events.splice(0, this.events.length - 200);
+    this.handleEvents(first);
+    if (this.events.length > 300) this.events.splice(0, this.events.length - 300);
 
     this.questTimer += elapsed;
     if (this.questTimer > 0.4) {
       this.questTimer = 0;
       this.runQuestCheck();
+      if (ensureDaily(this.state)) this.emit();
     }
     if (now - this.lastSave > BALANCE.autosaveSeconds * 1000) {
       this.lastSave = now;
@@ -128,35 +174,64 @@ export class Game {
     if (now - this.lastEmit > 200) this.emit();
   }
 
-  /** fraction of the way to the next sim tick — used to interpolate belt items */
+  private handleEvents(from: number) {
+    let sold = false;
+    for (let i = from; i < this.events.length; i++) {
+      const e = this.events[i];
+      if (e.type === 'sold') sold = true;
+      else if (e.type === 'research') {
+        this.toast(`${this.t('ui.researchDone')}: ${this.t(`r.${e.id}.t`)}`, 'success');
+        this.play('research');
+        this.structureChanged();
+      } else if (e.type === 'contract_done') {
+        this.toast(this.t('ui.contractDone', { item: this.t(`item.${e.contract.item}`), reward: Math.round(e.contract.reward).toLocaleString() }), 'success');
+        this.play('quest');
+      } else if (e.type === 'contract_expired') {
+        this.toast(this.t('ui.contractExpired', { item: this.t(`item.${e.contract.item}`) }), 'error');
+      }
+    }
+    if (sold) this.play('sell');
+  }
+
   get alpha() {
     return this.acc / BALANCE.tickSeconds;
   }
 
   private onVisibility = () => {
-    // When the tab comes back, step() sees the long gap and calls catchUp().
     if (document.visibilityState === 'hidden') this.save();
   };
 
   private onHide = () => this.save();
 
   /** credits real time that passed while the game wasn't running */
-  private catchUp(away: number) {
-    if (!(away > 0)) return; // clock moved backwards → no credit
+  catchUp(away: number) {
+    if (!(away > 0)) return;
     if (away < BALANCE.offlineMinSeconds) {
-      // short gap: just simulate it normally
       const dt = BALANCE.tickSeconds;
-      for (let t = 0; t < away; t += dt) tick(this.state, dt);
+      for (let t = 0; t < away; t += dt) tick(this.state, dt, this.events);
       return;
     }
     const report = applyOffline(this.state, away);
-    if (report && report.earned > 0) this.ui.offline = report;
+    if (report && (report.earned > 0 || report.researchDone.length)) this.ui.offline = report;
     this.structureChanged();
   }
 
   save() {
-    this.state.lastSaved = Date.now();
+    const now = Date.now();
+    this.state.lastSaved = now;
+    this.state.maxSeenTime = Math.max(this.state.maxSeenTime ?? 0, now);
     this.store.save(this.state);
+  }
+
+  /** swap in a different state (cloud save, prestige) */
+  replaceState(state: GameState, awaySeconds = 0) {
+    this.state = state;
+    this.ui = { ...this.ui, mode: { kind: 'select' }, selected: null, plot: null, linkPreview: null };
+    setSoundEnabled(state.settings.sound);
+    if (awaySeconds > 0) this.catchUp(awaySeconds);
+    ensureDaily(this.state);
+    this.structureChanged();
+    this.save();
   }
 
   // ---------------------------------------------------------------- subscription
@@ -183,14 +258,19 @@ export class Game {
     return translate(this.state.settings.lang, key, params);
   }
 
+  play(name: Sfx) {
+    sfx(name);
+  }
+
   toast(text: string, kind: Toast['kind'] = 'info') {
     const id = ++this.toastId;
     this.ui.toasts = [...this.ui.toasts.slice(-2), { id, text, kind }];
+    if (kind === 'error') this.play('error');
     this.emit();
     setTimeout(() => {
       this.ui.toasts = this.ui.toasts.filter((t) => t.id !== id);
       this.emit();
-    }, 2600);
+    }, 2800);
   }
 
   private result<T>(r: ActionResult<T>): r is { ok: true; value: T } {
@@ -198,10 +278,17 @@ export class Game {
     return r.ok;
   }
 
+  /** for core functions that return an error key or null */
+  private check(err: string | null): boolean {
+    if (err) this.toast(this.t(err), 'error');
+    return !err;
+  }
+
   private runQuestCheck() {
     const q = checkQuests(this.state);
     if (q) {
       this.ui.questDone = q;
+      this.play('quest');
       this.emit();
       setTimeout(() => {
         if (this.ui.questDone === q) {
@@ -209,8 +296,8 @@ export class Game {
           this.emit();
         }
       }, 3500);
-      this.structureChanged(); // may unlock buildings
-      this.runQuestCheck(); // several may complete at once
+      this.structureChanged();
+      this.runQuestCheck();
     }
   }
 
@@ -219,12 +306,19 @@ export class Game {
   setMode(mode: Mode) {
     this.ui.mode = mode;
     this.ui.linkPreview = null;
-    if (mode.kind === 'build') this.ui.selected = null;
+    if (mode.kind !== 'select') {
+      this.ui.selected = null;
+      this.ui.plot = null;
+    }
     this.emit();
   }
 
-  openPanel(panel: UiState['panel']) {
+  openPanel(panel: Panel) {
     this.ui.panel = this.ui.panel === panel ? 'none' : panel;
+    if (this.ui.panel !== 'none' && this.ui.panel !== 'build') {
+      this.ui.selected = null;
+      this.ui.plot = null;
+    }
     this.emit();
   }
 
@@ -240,10 +334,10 @@ export class Game {
 
   select(id: number | null) {
     this.ui.selected = id;
+    this.ui.plot = null;
     this.emit();
   }
 
-  /** a tap/click on the map, in tile coordinates */
   tapTile(x: number, y: number) {
     const mode = this.ui.mode;
     const hit = buildingAt(this.state, x, y);
@@ -251,9 +345,8 @@ export class Game {
     if (mode.kind === 'build') {
       const r = placeBuilding(this.state, mode.type, x, y);
       if (this.result(r)) {
-        this.ui.selected = null;
+        this.play('place');
         this.structureChanged();
-        // keep building the same type until cancelled, unless it's unaffordable now
         if (this.state.money < BUILDINGS[mode.type].cost) this.setMode({ kind: 'select' });
       }
       return;
@@ -275,12 +368,19 @@ export class Game {
       const r = createLink(this.state, mode.from, hit.id);
       if (this.result(r)) {
         if (!r.value.carries.length) this.toast(this.t('ui.linkCarriesNothing'), 'error');
+        else this.play('link');
         this.setMode({ kind: 'select' });
         this.structureChanged();
       }
       return;
     }
 
+    if (!hit && x >= 0 && y >= 0 && x < this.state.world.size && y < this.state.world.size && !isUnlocked(this.state, x, y)) {
+      this.ui.selected = null;
+      this.ui.plot = plotOf(x, y);
+      this.emit();
+      return;
+    }
     this.select(hit ? hit.id : null);
   }
 
@@ -295,16 +395,20 @@ export class Game {
     } else this.ui.linkPreview = null;
   }
 
-  // ---------------------------------------------------------------- inspector actions
+  // ---------------------------------------------------------------- inspector
 
   upgrade(id: number) {
-    if (this.result(upgradeBuilding(this.state, id))) this.structureChanged();
+    if (this.result(upgradeBuilding(this.state, id))) {
+      this.play('upgrade');
+      this.structureChanged();
+    }
   }
 
   demolish(id: number) {
     const r = removeBuilding(this.state, id);
     if (this.result(r)) {
       this.ui.selected = null;
+      this.play('remove');
       this.structureChanged();
     }
   }
@@ -318,8 +422,136 @@ export class Game {
   }
 
   upgradeBelts() {
-    if (this.result(upgradeBelts(this.state))) this.structureChanged();
+    if (this.result(upgradeBelts(this.state))) {
+      this.play('upgrade');
+      this.structureChanged();
+    }
   }
+
+  // ---------------------------------------------------------------- phase 2
+
+  buyPlot() {
+    const p = this.ui.plot;
+    if (!p) return;
+    if (this.check(buyPlot(this.state, p[0], p[1]))) {
+      this.ui.plot = null;
+      this.play('upgrade');
+      this.structureChanged();
+    }
+  }
+
+  research(id: ResearchId) {
+    if (this.check(startResearch(this.state, id))) {
+      this.play('click');
+      this.emit();
+    }
+  }
+
+  cancelResearch() {
+    cancelResearch(this.state);
+    this.emit();
+  }
+
+  buyVehicle(type: VehicleType) {
+    if (this.check(buyVehicle(this.state, type))) {
+      this.play('place');
+      this.emit();
+    }
+  }
+
+  sellVehicle(id: number) {
+    sellVehicle(this.state, id);
+    this.emit();
+  }
+
+  setRoute(id: number, city: CityId, filter: ItemId | 'auto') {
+    this.check(setRoute(this.state, id, city, filter));
+    this.emit();
+  }
+
+  // ---------------------------------------------------------------- phase 3
+
+  acceptContract(id: number) {
+    if (this.check(acceptContract(this.state, id))) {
+      this.play('click');
+      this.emit();
+    }
+  }
+
+  abandonContract(id: number) {
+    abandonContract(this.state, id);
+    this.emit();
+  }
+
+  rerollContracts() {
+    this.check(rerollOffers(this.state));
+    this.emit();
+  }
+
+  async claimDaily(id: string) {
+    const isBonus = id === '__bonus';
+    const gems = isBonus ? claimBonus(this.state) : claimMission(this.state, id);
+    if (!gems) return;
+    if (this.online?.signedIn()) {
+      this.ui.busy = true;
+      this.emit();
+      const r = await this.online.claimDaily(this.state.daily.day, id, gems);
+      this.ui.busy = false;
+      if (r.ok) this.state.gems = r.gems;
+      else this.toast(this.t(r.reason), 'error');
+    } else {
+      this.state.gems += gems;
+    }
+    this.toast(`+${gems} ${this.t('ui.gems')}`, 'success');
+    this.play('quest');
+    this.save();
+    this.emit();
+  }
+
+  buyPerk(id: PerkId) {
+    if (this.check(buyPerk(this.state, id))) {
+      this.play('upgrade');
+      this.save();
+      this.emit();
+    }
+  }
+
+  sellCompany() {
+    if (!canPrestige(this.state)) return;
+    const next = prestige(this.state);
+    this.ui.panel = 'none';
+    this.replaceState(next);
+    this.online?.saveNow?.(this.state);
+    this.play('prestige');
+    this.toast(this.t('ui.prestigeDone', { n: next.prestige.count }), 'success');
+  }
+
+  // ---------------------------------------------------------------- gems
+
+  async useGemItem(id: GemItemId) {
+    if (!gemItemAvailable(this.state, id)) return;
+    if (this.online?.signedIn()) {
+      this.ui.busy = true;
+      this.emit();
+      const r = await this.online.spendGems(id);
+      this.ui.busy = false;
+      if (!r.ok) {
+        this.toast(this.t(r.reason), 'error');
+        this.emit();
+        return;
+      }
+      this.state.gems = r.gems;
+    } else if (!this.check(spendLocalGems(this.state, id))) return;
+
+    const report = applyGemItem(this.state, id);
+    if (report) this.ui.offline = { ...report, awaySeconds: report.seconds };
+    this.play('upgrade');
+    this.toast(this.t(`gem.${id}.done`), 'success');
+    this.save();
+    this.structureChanged();
+  }
+
+  // ---------------------------------------------------------------- misc
 
   skipTutorial() {
     skipTutorial(this.state);
@@ -328,6 +560,7 @@ export class Game {
 
   dismissOffline() {
     this.ui.offline = null;
+    this.play('coins');
     this.emit();
   }
 
@@ -337,12 +570,19 @@ export class Game {
     this.structureChanged();
   }
 
+  setSound(on: boolean) {
+    this.state.settings.sound = on;
+    setSoundEnabled(on);
+    if (on) this.play('click');
+    this.emit();
+  }
+
   reset() {
     this.store.clear();
-    this.state = newGame();
-    this.ui = { ...this.ui, mode: { kind: 'select' }, selected: null, panel: 'none', offline: null };
-    this.structureChanged();
-    this.save();
+    const fresh = newGame();
+    fresh.settings = { ...this.state.settings };
+    this.ui = { ...this.ui, panel: 'none', offline: null };
+    this.replaceState(fresh);
   }
 
   selectedBuilding() {

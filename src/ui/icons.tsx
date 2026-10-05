@@ -4,15 +4,18 @@ const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
 export function ItemIcon({ item, size = 16 }: { item: ItemId; size?: number }) {
   const c = hex(ITEMS[item].color);
-  const stroke = 'rgba(0,0,0,.45)';
+  const k = 'rgba(0,0,0,.45)';
+  const dark = '#141920';
   let shape;
   switch (item) {
     case 'iron_bar':
     case 'copper_bar':
-      shape = <rect x="2" y="5" width="12" height="6" rx="1.5" fill={c} stroke={stroke} />;
+    case 'glass':
+    case 'steel':
+      shape = <rect x="2" y="5" width="12" height="6" rx="1.5" fill={c} stroke={k} />;
       break;
     case 'machine_part':
-      shape = <polygon points="8,1.5 10,5.5 14.5,5.5 11,8.5 12.5,13.5 8,10.5 3.5,13.5 5,8.5 1.5,5.5 6,5.5" fill={c} stroke={stroke} />;
+      shape = <polygon points="8,1.5 10,5.5 14.5,5.5 11,8.5 12.5,13.5 8,10.5 3.5,13.5 5,8.5 1.5,5.5 6,5.5" fill={c} stroke={k} />;
       break;
     case 'wire':
       shape = (
@@ -22,8 +25,69 @@ export function ItemIcon({ item, size = 16 }: { item: ItemId; size?: number }) {
         </g>
       );
       break;
+    case 'gear':
+      shape = (
+        <g>
+          <polygon points="8,1 9.4,4 12.9,3.1 12,6.6 15,8 12,9.4 12.9,12.9 9.4,12 8,15 6.6,12 3.1,12.9 4,9.4 1,8 4,6.6 3.1,3.1 6.6,4" fill={c} stroke={k} />
+          <circle cx="8" cy="8" r="2" fill={dark} />
+        </g>
+      );
+      break;
+    case 'steel_beam':
+      shape = <path d="M1 4h14v2.2H9.2v3.6H15V12H1V9.8h5.8V6.2H1z" fill={c} />;
+      break;
+    case 'fuel_rod':
+      shape = <rect x="5" y="1" width="6" height="14" rx="3" fill={c} stroke={k} />;
+      break;
+    case 'motor':
+      shape = (
+        <g>
+          <circle cx="8" cy="8" r="6.5" fill={c} stroke={k} />
+          <circle cx="8" cy="8" r="2.8" fill={dark} />
+        </g>
+      );
+      break;
+    case 'circuit':
+      shape = (
+        <g>
+          <rect x="2" y="2" width="12" height="12" fill={c} stroke={k} />
+          <rect x="6" y="6" width="4" height="4" fill="#10251e" />
+        </g>
+      );
+      break;
+    case 'battery_cell':
+      shape = (
+        <g>
+          <rect x="4.5" y="3" width="7" height="12" rx="1.5" fill={c} stroke={k} />
+          <rect x="6.5" y="1.5" width="3" height="1.5" fill={c} />
+        </g>
+      );
+      break;
+    case 'engine':
+      shape = <polygon points="8,1 14,4.5 14,11.5 8,15 2,11.5 2,4.5" fill={c} stroke={k} />;
+      break;
+    case 'robot_arm':
+      shape = <polygon points="8,1 15,8 8,15 1,8" fill={c} stroke={k} />;
+      break;
+    case 'computer':
+      shape = (
+        <g>
+          <rect x="1.5" y="3" width="13" height="9" rx="1" fill={c} stroke={k} />
+          <rect x="3.5" y="4.8" width="9" height="5.4" fill="#0e2630" />
+        </g>
+      );
+      break;
+    case 'electric_vehicle':
+      shape = (
+        <g>
+          <rect x="1" y="5" width="14" height="6" rx="3" fill={c} stroke={k} />
+          <circle cx="4.5" cy="11.5" r="1.8" fill={dark} />
+          <circle cx="11.5" cy="11.5" r="1.8" fill={dark} />
+        </g>
+      );
+      break;
     default:
-      shape = <polygon points="2,7 6,2 13,4 14,10 9,14 3,12" fill={c} stroke={stroke} />;
+      shape = <polygon points="2,7 6,2 13,4 14,10 9,14 3,12" fill={c} stroke={k} />;
   }
   return (
     <svg className="icon" width={size} height={size} viewBox="0 0 16 16" aria-hidden>
@@ -94,6 +158,51 @@ export function BuildingIcon({ type, size = 36 }: { type: BuildingType; size?: n
           <text x="20" y="24.5" textAnchor="middle" fontSize="12" fontWeight="700" fill="#2fbf8f" fontFamily="JetBrains Mono, monospace">
             $
           </text>
+        </g>
+      );
+      break;
+    case 'fabricator':
+      inner = (
+        <g>
+          <rect x="7" y="11" width="26" height="22" rx="3" fill="#2a2440" stroke="#9d6bff" />
+          <polygon points="16,14 17.5,17 21,16.5 20,20 23,21.5 20,23 21,26.5 17.5,26 16,29 14.5,26 11,26.5 12,23 9,21.5 12,20 11,16.5 14.5,17" fill="#3a2f5c" stroke="#9d6bff" />
+          <circle cx="26" cy="25" r="4" fill="#3a2f5c" stroke="#c4a8ff" />
+        </g>
+      );
+      break;
+    case 'dock':
+      inner = (
+        <g>
+          <rect x="7" y="25" width="26" height="7" fill="#1b3a40" />
+          <rect x="9" y="19" width="6" height="6" fill="#23b5c9" />
+          <rect x="16" y="21" width="6" height="4" fill="#ff8a3d" />
+          <path d="M28 32V12H17v5" stroke="#ffc94a" strokeWidth="2" fill="none" />
+        </g>
+      );
+      break;
+    case 'solar':
+      inner = (
+        <g>
+          <rect x="9" y="12" width="22" height="18" fill="#123a5c" stroke="#3fa9f5" />
+          <path d="M20 12v18M9 21h22" stroke="#3fa9f5" opacity=".7" />
+        </g>
+      );
+      break;
+    case 'battery':
+      inner = (
+        <g>
+          <rect x="13" y="12" width="14" height="20" rx="2" fill="none" stroke="#a0e050" strokeWidth="2" />
+          <rect x="17" y="9.5" width="6" height="2.5" fill="#a0e050" />
+          <rect x="16" y="20" width="8" height="9" fill="#a0e050" opacity=".85" />
+        </g>
+      );
+      break;
+    case 'nuclear_plant':
+      inner = (
+        <g>
+          <path d="M8 33l3-20h9l3 20z" fill="#2c3a33" stroke="#5fe08a" />
+          <path d="M21 33l2.5-15h7.5l2.5 15z" fill="#2c3a33" stroke="#5fe08a" />
+          <circle cx="15.5" cy="25" r="3" fill="#5fe08a" opacity=".7" />
         </g>
       );
       break;

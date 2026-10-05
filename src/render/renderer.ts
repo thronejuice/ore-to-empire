@@ -1,5 +1,7 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { BALANCE, BUILDINGS, ITEMS, beltSpeed, type BuildingType, type ItemId } from '../config/balance';
+import { BALANCE, BUILDINGS, ITEMS, POWER, beltSpeed, storageCapacity, type BuildingType, type ItemId } from '../config/balance';
+import { nextPlotPrice, plotForSale } from '../core/land';
+import { plotsPerRow } from '../core/state';
 import { canPlace } from '../core/actions';
 import { pointAt } from '../core/pathfind';
 import { getBuilding, hqPosition, idx, isUnlocked } from '../core/state';
@@ -20,6 +22,7 @@ const STATUS_COLOR: Record<string, number> = {
   output_full: C.red,
   no_power: C.amber,
   no_fuel: C.red,
+  locked: C.textDim,
 };
 
 /**
@@ -310,6 +313,27 @@ export class Renderer {
     const g = this.buildings.clear();
     for (const c of this.labels.removeChildren()) c.destroy();
     for (const b of this.game.state.buildings) this.drawBuilding(g, b);
+    this.drawPlotTags();
+  }
+
+  private drawPlotTags() {
+    const s = this.game.state;
+    const n = plotsPerRow(s);
+    const P = BALANCE.plotSize * TILE;
+    const price = nextPlotPrice(s);
+    for (let py = 0; py < n; py++)
+      for (let px = 0; px < n; px++) {
+        if (!plotForSale(s, px, py)) continue;
+        const t = new Text({
+          text: `${this.game.t('ui.landForSale')}\n${fmtMoney(price)}`,
+          style: { fontFamily: 'IBM Plex Sans Thai, sans-serif', fontSize: 15, fontWeight: '600', fill: 0xc9d1dc, align: 'center', lineHeight: 20 },
+          resolution: 3,
+        });
+        t.anchor.set(0.5);
+        t.alpha = 0.75;
+        t.position.set(px * P + P / 2, py * P + P / 2);
+        this.labels.addChild(t);
+      }
   }
 
   private drawBuilding(g: Graphics, b: Building) {
@@ -351,6 +375,28 @@ export class Renderer {
         g.rect(cx - 18, cy - 22, 9, 18).fill(0x3a3550);
         g.rect(cx + 8, cy - 26, 9, 22).fill(0x3a3550);
         g.poly([cx - 4, cy + 1, cx + 2, cy + 1, cx - 1, cy + 7, cx + 4, cy + 7, cx - 4, cy + 16, cx - 1, cy + 9, cx - 5, cy + 9]).fill(C.amber);
+        break;
+      case 'fabricator':
+        g.roundRect(cx - 28, cy - 22, 56, 44, 6).fill(0x2a2440).stroke({ width: 1.5, color: 0x9d6bff });
+        break;
+      case 'dock':
+        g.rect(cx - 30, cy + 4, 60, 16).fill(0x1b3a40);
+        for (let i = 0; i < 3; i++) g.rect(cx - 26 + i * 18, cy - 8 + (i % 2) * 4, 14, 12).fill([0x23b5c9, 0xff8a3d, 0x9fb0c4][i]);
+        g.moveTo(cx + 22, cy + 18).lineTo(cx + 22, cy - 26).lineTo(cx - 8, cy - 26).stroke({ width: 3, color: 0xffc94a });
+        g.moveTo(cx - 6, cy - 26).lineTo(cx - 6, cy - 14).stroke({ width: 1.5, color: 0xffc94a });
+        break;
+      case 'solar':
+        g.rect(cx - 13, cy - 11, 26, 20).fill(0x123a5c).stroke({ width: 1.5, color: 0x3fa9f5 });
+        g.moveTo(cx, cy - 11).lineTo(cx, cy + 9).moveTo(cx - 13, cy - 1).lineTo(cx + 13, cy - 1).stroke({ width: 1, color: 0x3fa9f5, alpha: 0.7 });
+        break;
+      case 'battery':
+        g.roundRect(cx - 9, cy - 12, 18, 24, 3).stroke({ width: 2, color: 0xa0e050 });
+        g.rect(cx - 4, cy - 15, 8, 3).fill(0xa0e050);
+        break;
+      case 'nuclear_plant':
+        g.poly([cx - 34, cy + 36, cx - 28, cy - 18, cx - 6, cy - 18, cx, cy + 36]).fill(0x2c3a33).stroke({ width: 2, color: 0x5fe08a });
+        g.poly([cx + 4, cy + 36, cx + 10, cy - 6, cx + 30, cy - 6, cx + 36, cy + 36]).fill(0x2c3a33).stroke({ width: 2, color: 0x5fe08a });
+        g.circle(cx - 17, cy + 14, 7).stroke({ width: 2, color: 0x5fe08a, alpha: 0.6 });
         break;
       case 'depot':
         g.roundRect(cx - 12, cy - 10, 24, 20, 3).fill(0x1f3a32).stroke({ width: 1.5, color: 0x2fbf8f });
@@ -431,14 +477,31 @@ export class Renderer {
           const sx = cx + 12.5 + Math.sin(t * 6 + k) * 3;
           g.circle(sx, cy - 28 - t * 22, 4 + t * 6).fill({ color: 0x8a96a8, alpha: 0.35 * (1 - t) });
         }
-      } else if (b.type === 'warehouse') {
+      } else if (b.type === 'warehouse' || b.type === 'dock') {
         let total = 0;
         for (const k in b.input) total += b.input[k as ItemId] ?? 0;
-        const cap = BALANCE.warehouseCapacity * Math.pow(BALANCE.warehouseCapacityPerLevel, b.level - 1);
-        const f = Math.min(1, total / cap);
-        g.rect(b.x * TILE + 7, b.y * TILE + TILE - 8, (TILE - 14) * f, 3).fill(f > 0.95 ? C.red : C.amber);
+        const f = Math.min(1, total / storageCapacity(b.type, b.level));
+        const w = def.w * TILE - 14;
+        g.rect(b.x * TILE + 7, (b.y + def.h) * TILE - 8, w * f, 3).fill(f > 0.95 ? C.red : C.amber);
+      } else if (b.type === 'fabricator') {
+        g.star(cx - 11, cy, 8, 13, 9.5, spin * 0.5).fill(0x3a2f5c).stroke({ width: 1.5, color: 0x9d6bff });
+        g.star(cx + 12, cy + 6, 6, 9, 6.5, -spin * 0.7 + 0.4).fill(0x3a2f5c).stroke({ width: 1.5, color: 0xc4a8ff });
+        g.circle(cx - 11, cy, 4).fill(C.panel);
+      } else if (b.type === 'battery') {
+        const f = (b.charge ?? 0) / POWER.batteryCapacity;
+        g.rect(cx - 6, cy + 9 - 19 * f, 12, 19 * f).fill({ color: 0xa0e050, alpha: 0.85 });
+      } else if (b.type === 'nuclear_plant' && b.burn > 0) {
+        const glow = 0.4 + 0.3 * Math.sin(this.time * 3);
+        g.circle(cx - 17, cy + 14, 5).fill({ color: 0x5fe08a, alpha: glow });
+        for (let k = 0; k < 3; k++) {
+          const t = (this.time * 0.35 + k / 3) % 1;
+          g.circle(cx - 17 + Math.sin(t * 5 + k) * 4, cy - 22 - t * 34, 7 + t * 10).fill({ color: 0xdfe6ee, alpha: 0.28 * (1 - t) });
+        }
+      } else if (b.type === 'solar') {
+        const sh = (this.time * 0.25 + b.id * 0.13) % 1;
+        g.rect(cx - 13 + sh * 22, cy - 11, 4, 20).fill({ color: 0xffffff, alpha: 0.12 });
       }
-      if (b.type !== 'hq' && b.type !== 'depot') {
+      if (b.type !== 'hq' && b.type !== 'depot' && b.type !== 'solar') {
         const col = STATUS_COLOR[b.status] ?? C.textDim;
         const pulse = b.status === 'output_full' || b.status === 'no_fuel' ? 0.5 + 0.5 * Math.sin(this.time * 8) : 1;
         g.circle(b.x * TILE + 9, b.y * TILE + 13, 3).fill({ color: col, alpha: pulse });
@@ -463,13 +526,52 @@ export class Renderer {
 
   private item(g: Graphics, item: ItemId, x: number, y: number, r: number) {
     const col = ITEMS[item].color;
+    const edge = { width: 1, color: 0x000000, alpha: 0.4 };
     switch (item) {
       case 'iron_bar':
       case 'copper_bar':
-        g.roundRect(x - r, y - r * 0.55, r * 2, r * 1.1, 2).fill(col).stroke({ width: 1, color: 0x000000, alpha: 0.4 });
+      case 'glass':
+      case 'steel':
+        g.roundRect(x - r, y - r * 0.55, r * 2, r * 1.1, 2).fill(col).stroke(edge);
         break;
       case 'machine_part':
-        g.star(x, y, 6, r, r * 0.7).fill(col).stroke({ width: 1, color: 0x000000, alpha: 0.4 });
+        g.star(x, y, 6, r, r * 0.7).fill(col).stroke(edge);
+        break;
+      case 'gear':
+        g.star(x, y, 8, r, r * 0.72).fill(col).stroke(edge);
+        g.circle(x, y, r * 0.3).fill(0x1a1f27);
+        break;
+      case 'steel_beam':
+        g.rect(x - r * 1.2, y - r * 0.6, r * 2.4, r * 0.35).rect(x - r * 1.2, y + r * 0.25, r * 2.4, r * 0.35).rect(x - r * 0.18, y - r * 0.6, r * 0.36, r * 1.2).fill(col);
+        break;
+      case 'fuel_rod':
+        g.roundRect(x - r * 0.45, y - r, r * 0.9, r * 2, r * 0.45).fill(col).stroke(edge);
+        break;
+      case 'motor':
+        g.circle(x, y, r).fill(col).stroke(edge);
+        g.circle(x, y, r * 0.45).fill(0x1a1f27);
+        break;
+      case 'circuit':
+        g.rect(x - r * 0.9, y - r * 0.9, r * 1.8, r * 1.8).fill(col).stroke(edge);
+        g.rect(x - r * 0.35, y - r * 0.35, r * 0.7, r * 0.7).fill(0x10251e);
+        break;
+      case 'battery_cell':
+        g.roundRect(x - r * 0.55, y - r * 0.9, r * 1.1, r * 1.8, 2).fill(col).stroke(edge);
+        g.rect(x - r * 0.25, y - r * 1.15, r * 0.5, r * 0.25).fill(col);
+        break;
+      case 'engine':
+        g.regularPoly(x, y, r * 1.1, 6).fill(col).stroke(edge);
+        break;
+      case 'robot_arm':
+        g.poly([x, y - r * 1.2, x + r * 1.1, y, x, y + r * 1.2, x - r * 1.1, y]).fill(col).stroke(edge);
+        break;
+      case 'computer':
+        g.roundRect(x - r * 1.1, y - r * 0.8, r * 2.2, r * 1.4, 2).fill(col).stroke(edge);
+        g.rect(x - r * 0.8, y - r * 0.55, r * 1.6, r * 0.9).fill(0x0e2630);
+        break;
+      case 'electric_vehicle':
+        g.roundRect(x - r * 1.3, y - r * 0.55, r * 2.6, r * 1.1, r * 0.5).fill(col).stroke(edge);
+        g.circle(x - r * 0.7, y + r * 0.55, r * 0.3).circle(x + r * 0.7, y + r * 0.55, r * 0.3).fill(0x10141a);
         break;
       case 'wire':
         g.circle(x, y, r * 0.85).stroke({ width: 2.5, color: col });
@@ -497,6 +599,11 @@ export class Renderer {
         this.strokePath(g, pts, TILE * 0.5, belt.from === sel.id ? C.orange : C.blue, 0.35);
       }
       this.outline(g, sel, C.orange, 0.6 + 0.4 * pulse);
+    }
+
+    if (ui.plot) {
+      const P = BALANCE.plotSize * TILE;
+      g.rect(ui.plot[0] * P + 2, ui.plot[1] * P + 2, P - 4, P - 4).stroke({ width: 3, color: C.amber, alpha: 0.6 + 0.4 * pulse });
     }
 
     const mode = ui.mode;

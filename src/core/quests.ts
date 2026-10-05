@@ -89,6 +89,19 @@ export const QUESTS: QuestDef[] = [
     check: (s) => s.stats.totalEarned >= 25000,
     progress: (s) => [Math.floor(s.stats.totalEarned), 25000],
   },
+  // ---- Phase 2–3 guidance
+  { id: 'q_research', reward: 1500, highlight: 'nav-research', check: (s) => s.research.done.length >= 1 },
+  { id: 'q_land', reward: 2000, check: (s) => s.world.plots.filter(Boolean).length >= 5 },
+  { id: 'q_export', reward: 3000, highlight: 'nav-fleet', check: (s) => s.stats.trips >= 1 },
+  { id: 'q_contract', reward: 3000, highlight: 'nav-contracts', check: (s) => s.stats.contracts >= 1 },
+  { id: 'q_motor', reward: 8000, check: (s) => (s.stats.sold.motor ?? 0) >= 10, progress: (s) => [s.stats.sold.motor ?? 0, 10] },
+  {
+    id: 'q_million',
+    reward: 0,
+    highlight: 'nav-prestige',
+    check: (s) => s.prestige.count >= 1,
+    progress: (s) => [Math.min(1_000_000, Math.floor(s.stats.totalEarned)), 1_000_000],
+  },
 ];
 
 export function currentQuestIndex(s: GameState): number {

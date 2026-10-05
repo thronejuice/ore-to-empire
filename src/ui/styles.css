@@ -886,3 +886,396 @@ button {
     font-size: 13px;
   }
 }
+
+/* ============================================================ Phase 2–4 components */
+
+.btn.small {
+  min-height: 32px;
+  padding: 5px 10px;
+  font-size: 13px;
+}
+.btn.full {
+  width: 100%;
+  margin-top: 12px;
+}
+.center {
+  text-align: center;
+}
+.row-between {
+  display: flex;
+  justify-content: space-between;
+  align-items: baseline;
+  gap: 8px;
+}
+.pill {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  padding: 3px 10px;
+  border-radius: 999px;
+  background: var(--panel-2);
+  border: 1px solid var(--edge);
+  font-size: 13px;
+}
+.modal.wide {
+  width: min(980px, 100%);
+}
+.modal-body .section-label:first-child {
+  margin-top: 0;
+}
+
+/* meters */
+.meter.grow {
+  flex: 1;
+  min-width: 60px;
+}
+.meter.mini {
+  width: 64px;
+  display: inline-block;
+  vertical-align: middle;
+}
+.meter .fill.low {
+  background: var(--red);
+}
+.meter .fill.dimfill {
+  background: var(--dim);
+}
+.meter.battery {
+  height: 3px;
+  margin-top: 2px;
+}
+.meter.battery .fill {
+  background: #a0e050;
+}
+
+/* top bar extras */
+.chips {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+  flex-wrap: wrap;
+  min-width: 0;
+}
+.chip {
+  display: inline-flex;
+  align-items: center;
+  gap: 5px;
+  padding: 4px 10px;
+  border-radius: 999px;
+  border: 1px solid var(--edge);
+  background: var(--panel-2);
+  font-size: 13px;
+  white-space: nowrap;
+}
+.chip.gems {
+  color: #bdf0ff;
+}
+.chip.boost {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.icon-btn {
+  position: relative;
+}
+.icon-btn.active {
+  border-color: var(--orange);
+  color: var(--orange);
+}
+.badge {
+  position: absolute;
+  top: -4px;
+  right: -4px;
+  min-width: 16px;
+  height: 16px;
+  padding: 0 4px;
+  border-radius: 999px;
+  background: var(--orange);
+  color: #1b0f05;
+  font-size: 10px;
+  font-weight: 700;
+  line-height: 16px;
+  text-align: center;
+}
+.badge:empty {
+  min-width: 9px;
+  width: 9px;
+  height: 9px;
+  padding: 0;
+  top: -2px;
+  right: -2px;
+}
+.mobile-nav {
+  display: none;
+}
+@media (max-width: 1100px) {
+  .desktop-nav {
+    display: none;
+  }
+  .mobile-nav {
+    display: flex;
+  }
+}
+
+/* menu sheet */
+.modal.menu {
+  padding: 14px;
+  width: min(420px, 100%);
+}
+.menu-grid {
+  display: grid;
+  grid-template-columns: repeat(3, 1fr);
+  gap: 8px;
+}
+.menu-item {
+  position: relative;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 6px;
+  padding: 14px 6px;
+  border-radius: 12px;
+  border: 1px solid var(--edge);
+  background: var(--panel-2);
+  font-size: 13px;
+  font-weight: 600;
+}
+.menu-item .badge {
+  top: 6px;
+  right: 6px;
+}
+
+/* research tree */
+.research-active {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+  flex-wrap: wrap;
+  padding: 10px 12px;
+  margin-bottom: 12px;
+  border-radius: 10px;
+  border: 1px solid var(--orange);
+  background: rgba(255, 138, 61, 0.08);
+}
+.research-active > div {
+  display: flex;
+  flex-direction: column;
+}
+.tree {
+  display: grid;
+  grid-template-columns: repeat(5, minmax(170px, 1fr));
+  gap: 10px;
+  overflow-x: auto;
+  padding-bottom: 6px;
+}
+.tree-col {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  min-width: 0;
+}
+.tree-col h3 {
+  margin: 0;
+}
+.node {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  background: var(--panel-2);
+}
+.node p {
+  margin: 0;
+  line-height: 1.35;
+}
+.node-head {
+  display: flex;
+  justify-content: space-between;
+  gap: 6px;
+}
+.node.done {
+  border-color: rgba(61, 220, 151, 0.45);
+  opacity: 0.8;
+}
+.node.active {
+  border-color: var(--orange);
+}
+.node.locked {
+  opacity: 0.55;
+}
+.node .btn {
+  margin-top: 4px;
+}
+@media (max-width: 720px) {
+  .tree {
+    grid-template-columns: 1fr;
+    overflow: visible;
+  }
+}
+
+/* markets */
+.news {
+  margin-bottom: 10px;
+}
+.news-item {
+  margin: 4px 0;
+  color: var(--amber);
+}
+.tabs {
+  display: flex;
+  gap: 4px;
+  overflow-x: auto;
+  border-bottom: 1px solid var(--edge);
+  margin-bottom: 8px;
+}
+.tab {
+  padding: 8px 12px;
+  border: none;
+  background: none;
+  border-bottom: 2px solid transparent;
+  font-weight: 600;
+  white-space: nowrap;
+  color: var(--dim);
+}
+.tab.active {
+  color: var(--text);
+  border-bottom-color: var(--orange);
+}
+.tab.locked {
+  opacity: 0.5;
+}
+.table-wrap {
+  overflow-x: auto;
+}
+.market-table tr.boom td {
+  background: rgba(255, 201, 74, 0.08);
+}
+
+/* fleet */
+.vehicle-shop {
+  display: grid;
+  grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 8px;
+}
+.vcard {
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  background: var(--panel-2);
+}
+.vcard.locked {
+  opacity: 0.6;
+}
+.vehicle-list {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.vehicle-list li {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  border-radius: 10px;
+  background: rgba(0, 0, 0, 0.2);
+}
+.v-row {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+}
+.v-row .mono:last-child {
+  margin-left: auto;
+}
+select {
+  font: inherit;
+  color: var(--text);
+  background: var(--panel-2);
+  border: 1px solid var(--edge-2);
+  border-radius: 8px;
+  padding: 5px 8px;
+  max-width: 100%;
+}
+
+/* contracts & daily */
+.contract {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  padding: 10px;
+  margin-bottom: 8px;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+  background: var(--panel-2);
+}
+.contract.active {
+  border-color: rgba(255, 138, 61, 0.5);
+}
+.contract.bonus {
+  border-style: dashed;
+}
+.c-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  flex-wrap: wrap;
+}
+.c-row strong {
+  flex: 1;
+  min-width: 0;
+}
+.reward {
+  color: var(--amber);
+  font-weight: 700;
+  display: inline-flex;
+  align-items: center;
+  gap: 3px;
+}
+.c-row.small {
+  justify-content: space-between;
+}
+
+/* prestige & shop */
+.rules {
+  margin: 6px 0 10px;
+  padding-left: 18px;
+}
+.perks,
+.gem-items {
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+}
+.perk {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  gap: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  background: var(--panel-2);
+}
+.perk p {
+  margin: 2px 0 0;
+}
+.perk > div {
+  min-width: 0;
+}
+.recipe.locked {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+/* modals and sheets sit over a busy map: keep them fully opaque */
+.modal,
+.sheet {
+  background: var(--panel-solid);
+}

@@ -6,6 +6,8 @@ import { GameContext } from './hooks';
 import { BottomBar, QuestCard, QuestDoneBanner, Toasts, TopBar } from './Hud';
 import { Inspector } from './Inspector';
 import { OfflineModal, SettingsPanel, StatsPanel, UpgradesPanel } from './Panels';
+import { ContractsPanel, DailyPanel, FleetPanel, MarketsPanel, MenuSheet, PlotSheet, PrestigePanel, ResearchPanel } from './MetaPanels';
+import { ShopPanel } from './ShopPanel';
 
 export function App() {
   const [game] = useState(() => new Game());
@@ -45,11 +47,20 @@ export function App() {
         <QuestDoneBanner />
         <Toasts />
         <Inspector />
+        <PlotSheet />
         <BottomBar />
         <BuildDrawer />
         <UpgradesPanel />
         <StatsPanel />
         <SettingsPanel />
+        <ResearchPanel />
+        <MarketsPanel />
+        <FleetPanel />
+        <ContractsPanel />
+        <DailyPanel />
+        <PrestigePanel />
+        <ShopPanel />
+        <MenuSheet />
         <OfflineModal />
       </div>
     </GameContext.Provider>

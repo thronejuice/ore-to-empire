@@ -1,17 +1,22 @@
 import { BUILDINGS } from '../config/balance';
 import { QUESTS, currentQuest, currentQuestIndex } from '../core/quests';
 import { incomePerMinute } from '../core/sim';
-import { fmtMoney, fmtNum } from '../i18n';
+import { boostActive } from '../core/economy';
+import { fmtClock, fmtMoney, fmtNum } from '../i18n';
+import { GemIcon, NAV, NavIcon } from './nav';
 import { useGame, useHighlight, useT } from './hooks';
 
 export function TopBar() {
   const game = useGame();
   const t = useT();
   const s = game.state;
-  const { gen, demand, satisfaction } = s.power;
+  const { gen, demand, satisfaction, battery, batteryMax } = s.power;
   const load = gen > 0 ? demand / gen : 0;
   const low = satisfaction < 0.999;
   const upgradesHi = useHighlight('upgrades-btn');
+  const now = Date.now();
+  const nav = NAV.filter((n) => n.visible(s));
+  const anyBadge = nav.some((n) => n.badge?.(s));
   return (
     <header className="topbar">
       <div className="stat money">
@@ -31,16 +36,50 @@ export function TopBar() {
         <span className="meter">
           <span className="fill" style={{ width: `${Math.min(100, load * 100)}%` }} />
         </span>
+        {batteryMax > 0 && (
+          <span className="meter battery">
+            <span className="fill" style={{ width: `${(battery / batteryMax) * 100}%` }} />
+          </span>
+        )}
       </div>
-      <div className="top-actions">
-        <button className={`icon-btn ${upgradesHi ? 'tut-pulse' : ''}`} onClick={() => game.openPanel('upgrades')} aria-label={t('ui.upgrades')} data-tut="upgrades-btn">
-          ⇪
+      <div className="chips">
+        <button className="chip gems mono" onClick={() => game.openPanel('shop')} aria-label={t('ui.gems')}>
+          <GemIcon /> {s.gems}
         </button>
-        <button className="icon-btn" onClick={() => game.openPanel('stats')} aria-label={t('ui.stats')}>
-          ▤
-        </button>
-        <button className="icon-btn" onClick={() => game.openPanel('settings')} aria-label={t('ui.settings')}>
-          ⚙
+        {s.research.active && (
+          <button className="chip mono" onClick={() => game.openPanel('research')}>
+            <NavIcon panel="research" size={14} /> {fmtClock(s.research.active.remaining)}
+          </button>
+        )}
+        {boostActive(s, now) && <span className="chip boost mono">×2 · {fmtClock((s.boostUntil - now) / 1000)}</span>}
+      </div>
+      <nav className="top-actions desktop-nav">
+        {nav.map((n) => {
+          const badge = n.badge?.(s);
+          const hi = (n.panel === 'upgrades' && upgradesHi) || currentQuest(s)?.highlight === `nav-${n.panel}`;
+          return (
+            <button
+              key={n.panel}
+              className={`icon-btn ${game.ui.panel === n.panel ? 'active' : ''} ${hi ? 'tut-pulse' : ''}`}
+              onClick={() => game.openPanel(n.panel)}
+              aria-label={t(n.label)}
+              title={t(n.label)}
+              data-tut={n.panel === 'upgrades' ? 'upgrades-btn' : undefined}
+            >
+              <NavIcon panel={n.panel} />
+              {badge ? <span className="badge">{typeof badge === 'number' ? badge : ''}</span> : null}
+            </button>
+          );
+        })}
+      </nav>
+      <div className="top-actions mobile-nav">
+        <button
+          className={`icon-btn ${upgradesHi || currentQuest(s)?.highlight?.startsWith('nav-') ? 'tut-pulse' : ''}`}
+          onClick={() => game.openPanel('menu')}
+          aria-label={t('ui.menu')}
+        >
+          <NavIcon panel="menu" />
+          {anyBadge ? <span className="badge" /> : null}
         </button>
       </div>
       {low && <div className="power-warning">{t('ui.powerLow', { pct: Math.round(satisfaction * 100) })}</div>}
@@ -149,7 +188,7 @@ export function BottomBar() {
     );
   }
 
-  if (game.ui.selected !== null) return null; // the inspector takes the bottom on mobile
+  if (game.ui.selected !== null || game.ui.plot) return null; // the inspector takes the bottom on mobile
 
   return (
     <div className="bottombar">

@@ -32,6 +32,8 @@ export const DEPOSIT_COLORS = {
   iron_ore: { fill: 0x2b323d, fleck: 0x9fb0c4 },
   copper_ore: { fill: 0x3a2a22, fleck: 0xe08a52 },
   coal: { fill: 0x16181c, fleck: 0x4a4f58 },
+  sand: { fill: 0x3a3424, fleck: 0xe6cf8f },
+  uranium_ore: { fill: 0x1c2e20, fleck: 0x7fe36b },
 } as const;
 
 export const TILE = 40;

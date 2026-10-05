@@ -2,14 +2,16 @@ import { useEffect, useState } from 'react';
 import {
   BALANCE,
   BUILDINGS,
+  POWER,
   RECIPES,
-  powerDraw,
-  recipesFor,
-  speedMult,
+  allRecipesFor,
+  levelPower,
+  levelSpeed,
+  storageCapacity,
   upgradeCost,
-  warehouseCapacity,
   type ItemId,
 } from '../config/balance';
+import { globalSpeed, powerMult, recipeUnlocked } from '../core/economy';
 import { isUpgradable, linkCarriesIn, totalInvested } from '../core/actions';
 import { getBuilding, invTotal } from '../core/state';
 import { fmtMoney, fmtNum } from '../i18n';
@@ -29,7 +31,7 @@ export function Inspector() {
   const def = BUILDINGS[b.type];
   const outs = s.belts.filter((x) => x.from === b.id);
   const ins = s.belts.filter((x) => x.to === b.id);
-  const sm = speedMult(b.level);
+  const sm = levelSpeed(b.level) * globalSpeed(s);
   const nextCost = upgradeCost(b.type, b.level);
   const canUp = isUpgradable(b) && b.level < BALANCE.maxBuildingLevel;
   const refund = Math.floor(totalInvested(b) * BALANCE.refundRate);
@@ -48,16 +50,23 @@ export function Inspector() {
         <Inv inv={b.output} empty={t('ui.empty')} />
       </div>
     );
-  } else if (b.type === 'furnace' || b.type === 'assembler') {
+  } else if (b.type === 'furnace' || b.type === 'assembler' || b.type === 'fabricator') {
     const r = b.recipe ? RECIPES[b.recipe] : null;
     body = (
       <>
         <div className="section-label">{t('ui.recipe')}</div>
         <div className="recipes">
-          {recipesFor(b.type).map((rid) => {
+          {allRecipesFor(b.type).map((rid) => {
             const rr = RECIPES[rid];
+            const open = recipeUnlocked(s, rid);
             return (
-              <button key={rid} className={`recipe ${b.recipe === rid ? 'active' : ''}`} onClick={() => game.setRecipe(b.id, rid)}>
+              <button
+                key={rid}
+                className={`recipe ${b.recipe === rid ? 'active' : ''} ${open ? '' : 'locked'}`}
+                disabled={!open}
+                title={open ? '' : t('ui.researchLocked', { name: t(`r.${rr.research}.t`) })}
+                onClick={() => game.setRecipe(b.id, rid)}
+              >
                 {(Object.keys(rr.inputs) as ItemId[]).map((i) => (
                   <span key={i} className="inv-item">
                     <ItemIcon item={i} />
@@ -71,7 +80,7 @@ export function Inspector() {
                     {rr.outputs[i]}
                   </span>
                 ))}
-                <span className="recipe-name">{t(`item.${Object.keys(rr.outputs)[0]}`)}</span>
+                <span className="recipe-name">{open ? t(`item.${Object.keys(rr.outputs)[0]}`) : `🔒 ${t(`r.${rr.research}.t`)}`}</span>
               </button>
             );
           })}
@@ -95,8 +104,8 @@ export function Inspector() {
         </div>
       </>
     );
-  } else if (b.type === 'warehouse') {
-    const cap = warehouseCapacity(b.level);
+  } else if (b.type === 'warehouse' || b.type === 'dock') {
+    const cap = storageCapacity(b.type, b.level);
     const total = invTotal(b.input);
     body = (
       <div className="kv">
@@ -108,17 +117,39 @@ export function Inspector() {
         <Inv inv={b.input} empty={t('ui.empty')} />
       </div>
     );
-  } else if (b.type === 'coal_plant') {
+  } else if (b.type === 'coal_plant' || b.type === 'nuclear_plant') {
+    const mw = b.type === 'coal_plant' ? POWER.coalPlant : POWER.nuclear;
     body = (
       <div className="kv">
         <span>{t('ui.fuel')}</span>
         <Inv inv={b.input} empty={t('ui.empty')} />
-        <span>{t('ui.power')}</span>
-        <span className={`mono ${b.burn > 0 ? 'good' : 'bad'}`}>{b.burn > 0 ? `+${BALANCE.coalPlantPower}` : '0'} MW</span>
+        <span>{t('ui.generates')}</span>
+        <span className={`mono ${b.burn > 0 ? 'good' : 'bad'}`}>{b.burn > 0 ? `+${mw}` : '0'} MW</span>
+      </div>
+    );
+  } else if (b.type === 'solar') {
+    body = (
+      <div className="kv">
+        <span>{t('ui.generates')}</span>
+        <span className="mono good">+{POWER.solar} MW</span>
+      </div>
+    );
+  } else if (b.type === 'battery') {
+    const f = (b.charge ?? 0) / POWER.batteryCapacity;
+    body = (
+      <div className="kv">
+        <span>{t('ui.battery')}</span>
+        <span className="mono">
+          {Math.round(b.charge ?? 0)} / {POWER.batteryCapacity} MJ
+        </span>
+        <span />
+        <span className="meter">
+          <span className="fill" style={{ width: `${f * 100}%` }} />
+        </span>
       </div>
     );
   } else {
-    body = <p className="dim small">{t(`bd.${b.type}`, { mw: BALANCE.hqPower })}</p>;
+    body = <p className="dim small">{t(`bd.${b.type}`, { mw: POWER.hq })}</p>;
   }
 
   const beltRow = (beltId: number, otherId: number, dir: 'out' | 'in') => {
@@ -151,7 +182,7 @@ export function Inspector() {
           <h2>
             {t(`b.${b.type}`)} {isUpgradable(b) && <span className="lv mono">{t('ui.level', { n: b.level })}</span>}
           </h2>
-          {b.type !== 'hq' && b.type !== 'depot' && <span className={`status ${statusClass}`}>● {t(`status.${b.status}`)}</span>}
+          {b.type !== 'hq' && b.type !== 'depot' && b.type !== 'solar' && <span className={`status ${statusClass}`}>● {t(`status.${b.status}`)}</span>}
         </div>
         <button className="icon-btn" onClick={() => game.select(null)} aria-label={t('ui.close')}>
           ✕
@@ -163,7 +194,7 @@ export function Inspector() {
         {def.power > 0 && (
           <div className="kv">
             <span>{t('ui.powerUse')}</span>
-            <span className="mono">⚡ {fmtNum(powerDraw(b.type, b.level))} MW</span>
+            <span className="mono">⚡ {fmtNum(levelPower(b.type, b.level) * powerMult(s))} MW</span>
           </div>
         )}
 

@@ -26,7 +26,19 @@ export function fmtNum(n: number, digits = 1): string {
   return Number.isInteger(n) ? String(n) : n.toFixed(digits);
 }
 
+/** compact countdown: 45s · 3:07 · 1:02:09 */
+export function fmtClock(seconds: number): string {
+  const s = Math.max(0, Math.ceil(seconds));
+  const h = Math.floor(s / 3600);
+  const m = Math.floor((s % 3600) / 60);
+  const r = s % 60;
+  if (h) return `${h}:${String(m).padStart(2, '0')}:${String(r).padStart(2, '0')}`;
+  if (m) return `${m}:${String(r).padStart(2, '0')}`;
+  return `${r}s`;
+}
+
 export function fmtDuration(lang: Lang, seconds: number): string {
+  if (seconds < 60) return translate(lang, 'ui.seconds', { n: Math.round(seconds) });
   const h = Math.floor(seconds / 3600);
   const m = Math.floor((seconds % 3600) / 60);
   const parts: string[] = [];
