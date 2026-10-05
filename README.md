@@ -1,9 +1,8 @@
 # Ore to Empire
 
-Factory-management game for adults: mine → belt → smelt → assemble → sell → upgrade.
-TypeScript · React (HUD) · PixiJS (map) · Vite. Runs in the browser on desktop and mobile.
-
-**Status: Phase 1** — core loop playable end to end.
+Factory-management game for adults: mine → belt → smelt → assemble → export → research → sell the company.
+TypeScript · React (HUD) · PixiJS (map) · Vite · Supabase + Omise (optional online layer).
+Runs in the browser on desktop and mobile; Thai and English.
 
 ## Run
 
@@ -12,55 +11,49 @@ npm install
 npm run dev            # http://localhost:5173
 npm test               # simulation tests (vitest)
 npm run build          # production build → dist/
-npm run build:single   # one self-contained HTML file → dist-single/index.html
+npm run build:single   # one self-contained HTML file → dist-single/index.html (offline/guest only)
 ```
 
-Requires Node 20+.
+Requires Node 20+. With no `.env` the game runs fully offline as a guest.
+To turn on accounts, cloud saves and the gem store, follow **[docs/SETUP-PHASE4.md](docs/SETUP-PHASE4.md)** (Thai).
 
-## How to play
+## What's in the game
 
-1. **Build → Mining Drill**, tap an ore deposit (grey = iron, orange = copper, black = coal).
-2. Tap the drill → **Connect belt** → tap the destination. The belt routes itself.
-3. Anything delivered to the **HQ** (or a Trade Depot) is sold.
-4. Smelt ore in a **Furnace** (2 ore → 1 bar) and turn bars into parts in an **Assembler**.
-5. Watch the **power meter**. The HQ gives 6 MW; past that, every machine slows down.
-   Build a **Coal Power Plant** (+20 MW) and belt coal into it.
-6. Tap a machine to change recipe, upgrade (+30 % speed per level) or demolish (50 % refund).
-
-Controls: drag to pan · pinch / scroll to zoom · Esc cancels.
-The factory keeps producing while the game is closed (up to 8 hours).
+- **Production:** 21 items over 5 tiers (ore → bars/steel/glass → parts → motors/circuits/engines → robot arms, computers, EVs). Drills, furnaces, assemblers, 2×2 fabricators.
+- **Logistics:** tap-to-connect belts with auto-routing, warehouses, loading docks; trucks, trains and ships to 5 markets with demand-driven prices and news events.
+- **Power:** HQ grid, coal, solar, batteries, nuclear. Shortage slows every machine.
+- **Land:** buy adjacent plots; sand and uranium only exist on bought land.
+- **Research:** 23 timed projects in 5 tiers (keeps running offline).
+- **Meta:** tutorial + guided quests, contracts, 3 daily missions (gems), prestige ("sell the company" for shares and perks), gem items (time skip, income ×2, offline cap).
+- **Offline progress:** up to 8 h (more with perks/gems); server clock for signed-in players.
 
 ## Project layout
 
 ```
 src/
-  config/balance.ts   ← every number: prices, costs, speeds, power, recipes. Tune here.
-  core/               ← pure game logic, no DOM (unit-tested)
-    state.ts          world generation, occupancy, helpers
-    sim.ts            fixed-step simulation: machines, belts, power, selling
-    pathfind.ts       belt routing (Dijkstra; avoids deposits, can bridge belts)
-    actions.ts        player actions: place, link, upgrade, recipe, demolish
-    offline.ts        offline progress (sample + extrapolate, capped)
-    quests.ts         tutorial + guided quests, building unlocks
-    save.ts           local save + migrations (SaveStore interface for cloud save later)
-  game.ts             controller: game loop, input modes, toasts, autosave
-  render/             PixiJS renderer, camera, touch/mouse input
-  ui/                 React HUD: top bar, quest card, build drawer, inspector, panels
-  i18n/               Thai + English strings
-tests/                vitest simulation tests
+  config/balance.ts     every production/economy number (items, recipes, research, cities, power)
+  config/meta.ts        prestige, contracts, daily missions, gem items & packs
+  core/                 pure game logic, no DOM (unit-tested)
+    sim.ts              fixed-step simulation: machines, belts, power, batteries
+    market.ts fleet.ts  prices/saturation/events · vehicles and docks
+    research.ts land.ts contracts.ts daily.ts prestige.ts gems.ts
+    offline.ts          offline progress (sample, measure, macro-simulate)
+    save.ts             local save + migrations (v1 Phase-1 saves load fine)
+  game.ts               controller: loop, input modes, actions, toasts, autosave
+  audio.ts              synthesized sound effects (Web Audio, no files)
+  render/               PixiJS renderer, camera, touch/mouse input
+  ui/                   React HUD and panels
+  online/               Supabase client, cloud save, server gems, Omise checkout
+  i18n/                 Thai + English
+supabase/
+  migrations/           schema, RLS, gem/save functions
+  functions/            create-charge, omise-webhook, line-auth (Deno)
+public/line-callback.html
+tests/                  vitest simulation tests
+docs/SETUP-PHASE4.md    online setup guide (Thai)
 ```
 
-The simulation is deterministic and independent of rendering (`core/` never touches the
-DOM), so the same code can later run on a server to validate saves.
+## Tuning
 
-## Roadmap
-
-- **Phase 1 (done):** grid, drills, belts, furnace, assembler, warehouse, coal power,
-  HQ/depot selling, upgrades, save, offline progress, tutorial + quests, TH/EN.
-- **Phase 2:** multiple markets with demand-driven prices, trucks/trains/ships,
-  buying land plots, research tree, tier 3–5 products (steel, motors, circuits, robots, EVs),
-  solar / batteries / nuclear.
-- **Phase 3:** prestige ("sell the company" for investor shares), contracts, daily missions,
-  sound effects, balancing, mobile polish.
-- **Phase 4:** Supabase accounts (guest → email / Google / LINE), cloud save, server time
-  for offline progress, Omise gem store (convenience & time-skip only).
+All numbers are in `src/config/balance.ts` and `src/config/meta.ts`.
+Gem prices also live on the server (`supabase/functions/_shared/packs.ts`, `spend_gems` in the migration) — the server copy decides what players pay.

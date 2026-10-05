@@ -1,0 +1,23 @@
+<!doctype html>
+<html lang="th">
+  <head>
+    <meta charset="utf-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1" />
+    <title>Signing in…</title>
+    <style>
+      body { margin: 0; display: grid; place-items: center; height: 100vh; background: #0f1318; color: #e8edf3; font: 15px system-ui, sans-serif; }
+    </style>
+  </head>
+  <body>
+    <p>กำลังเข้าสู่ระบบด้วย LINE…</p>
+    <script>
+      // LINE redirects here with ?code&state. Hand them to the game page, which
+      // checks the state and finishes sign-in through the line-auth function.
+      var p = new URLSearchParams(location.search);
+      try {
+        sessionStorage.setItem('ote.line_cb', JSON.stringify({ code: p.get('code'), state: p.get('state'), error: p.get('error') }));
+      } catch (e) {}
+      location.replace('./');
+    </script>
+  </body>
+</html>

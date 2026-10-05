@@ -111,13 +111,39 @@ export class Game {
   private raf = 0;
   private toastId = 0;
 
-  constructor(private store: SaveStore = localSave) {
+  /** offline time waiting for the server's clock (signed-in players) */
+  private pendingAway: number | null = null;
+
+  constructor(
+    private store: SaveStore = localSave,
+    opts: { deferCatchUp?: boolean } = {},
+  ) {
     const loaded = store.load();
     this.state = loaded ?? newGame();
     setSoundEnabled(this.state.settings.sound);
-    if (loaded) this.catchUp(this.awaySince(loaded.lastSaved));
+    if (loaded) {
+      const away = this.awaySince(loaded.lastSaved);
+      if (opts.deferCatchUp) this.pendingAway = away;
+      else this.catchUp(away);
+    }
     ensureDaily(this.state);
   }
+
+  /** Apply offline progress held back at startup (device clock unless the server says otherwise). */
+  applyDeferredCatchUp(away?: number) {
+    if (this.catchUpResolved) return; // only once, even if the network fallback fired first
+    this.catchUpResolved = true;
+    const a = away ?? this.pendingAway;
+    this.pendingAway = null;
+    if (a && a > 0) this.catchUp(a);
+  }
+
+  clearDeferredCatchUp() {
+    this.catchUpResolved = true;
+    this.pendingAway = null;
+  }
+
+  private catchUpResolved = false;
 
   /** seconds since `since`, refusing credit if the clock went backwards */
   awaySince(since: number, now = Date.now()): number {

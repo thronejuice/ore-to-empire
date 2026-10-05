@@ -1,5 +1,6 @@
 import { useEffect, useRef, useState } from 'react';
 import { Game } from '../game';
+import { hasStoredSession, onlineConfigured } from '../online/config';
 import { Renderer } from '../render/renderer';
 import { BuildDrawer } from './BuildDrawer';
 import { GameContext } from './hooks';
@@ -8,15 +9,24 @@ import { Inspector } from './Inspector';
 import { OfflineModal, SettingsPanel, StatsPanel, UpgradesPanel } from './Panels';
 import { ContractsPanel, DailyPanel, FleetPanel, MarketsPanel, MenuSheet, PlotSheet, PrestigePanel, ResearchPanel } from './MetaPanels';
 import { ShopPanel } from './ShopPanel';
+import { AccountPanel, ConflictModal, PaymentModal } from './OnlinePanels';
 
 export function App() {
-  const [game] = useState(() => new Game());
+  const [game] = useState(() => new Game(undefined, { deferCatchUp: hasStoredSession() }));
   const canvasHost = useRef<HTMLDivElement>(null);
 
   useEffect(() => {
     document.documentElement.lang = game.state.settings.lang;
     (window as unknown as { __game: Game }).__game = game; // handy for debugging in the console
     game.start();
+    if (onlineConfigured) {
+      // a stuck network must not hold back offline progress forever
+      const fallback = window.setTimeout(() => game.applyDeferredCatchUp(), 8000);
+      void import('../online/online')
+        .then(({ Online }) => Online.create(game))
+        .catch(() => game.applyDeferredCatchUp())
+        .finally(() => window.clearTimeout(fallback));
+    }
     const renderer = new Renderer(game);
     (window as unknown as { __renderer: Renderer }).__renderer = renderer;
     if (canvasHost.current) void renderer.mount(canvasHost.current);
@@ -61,6 +71,9 @@ export function App() {
         <PrestigePanel />
         <ShopPanel />
         <MenuSheet />
+        <AccountPanel />
+        <PaymentModal />
+        <ConflictModal />
         <OfflineModal />
       </div>
     </GameContext.Provider>

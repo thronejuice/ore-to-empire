@@ -3,6 +3,7 @@ import { dailyClaimableCount } from '../core/daily';
 import { metaUnlocked } from '../core/quests';
 import type { GameState } from '../core/types';
 import type { Panel } from '../game';
+import { onlineConfigured } from '../online/config';
 
 export interface NavEntry {
   panel: Panel;
@@ -24,6 +25,7 @@ export const NAV: NavEntry[] = [
     badge: (s) => s.stats.totalEarned >= PRESTIGE.minRunEarned,
   },
   { panel: 'shop', label: 'ui.shop', visible: () => true },
+  { panel: 'account', label: 'ui.account', visible: () => onlineConfigured },
   { panel: 'upgrades', label: 'ui.upgrades', visible: () => true },
   { panel: 'stats', label: 'ui.stats', visible: () => true },
   { panel: 'settings', label: 'ui.settings', visible: () => true },

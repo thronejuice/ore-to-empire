@@ -1,5 +1,6 @@
 import { useGame, useT } from './hooks';
 import { GemItems } from './MetaPanels';
+import { GemPacks } from './OnlinePanels';
 import { GemIcon } from './nav';
 import { Modal } from './Panels';
 
@@ -20,6 +21,7 @@ export function ShopPanel() {
     >
       <GemItems />
       <p className="small dim">{t('ui.gemsFree')}</p>
+      <GemPacks />
     </Modal>
   );
 }
