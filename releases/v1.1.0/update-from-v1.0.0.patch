@@ -1,0 +1,1615 @@
+diff --git a/.env.example:Zone.Identifier b/.env.example:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/.gitattributes:Zone.Identifier b/.gitattributes:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/.gitignore:Zone.Identifier b/.gitignore:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index eecad49..be4ff31 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -9,6 +9,19 @@
+ 
+ <!-- release-script: each "## [x.y.z]" section is copied into releases/vx.y.z/CHANGES.md -->
+ 
++## [1.1.0] - 2026-10-06
++
++### เพิ่มใหม่
++- **หน้าแนะนำวิธีเล่น (intro popup) 4 หน้า** สำหรับผู้เล่นใหม่: เป้าหมายของเกม · ขุดแร่และต่อสายพาน · แปรรูปและขยายกิจการ · ทำตามการ์ดภารกิจ แต่ละหน้ามีไอคอนจากในเกมเรียงเป็นแถว
++  - ขึ้นครั้งเดียวหลังตั้งชื่อผู้เล่น (ไม่ทับหน้าตั้งชื่อ หน้ารายได้ตอนออฟไลน์ หรือหน้าเลือกเซฟ)
++  - ปุ่ม "ข้าม" ทุกหน้า · ปัดซ้าย/ขวาบนมือถือ · ปุ่มลูกศรบนคีย์บอร์ด · กดนอกกล่องไม่ปิด
++  - ผู้เล่นเดิมไม่เห็น และไม่ขึ้นซ้ำหลังขายกิจการ
++- **ตั้งค่า → วิธีเล่น → "ดูอีกครั้ง"** เปิดหน้าแนะนำซ้ำได้ทุกเมื่อ
++- **หน้าต่าง "มีอะไรใหม่"** แจ้งรายละเอียดอัปเดตให้ผู้เล่นเดิมครั้งเดียวหลังเกมอัปเดตเวอร์ชัน
++
++### เซฟ
++- ใช้เซฟเดิมได้ เพิ่มช่อง `quests.introSeen` และ `settings.seenVersion` แบบไม่บังคับ ไม่เปลี่ยนเลขรูปแบบเซฟ
++
+ ## [1.0.0] - 2026-10-06
+ 
+ เวอร์ชันแรกที่พร้อมเปิดให้เล่น (v0.1.0–v0.7.1 คือช่วงพัฒนา)
+diff --git a/CHANGELOG.md:Zone.Identifier b/CHANGELOG.md:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/README.md b/README.md
+index eb1d6a1..2888969 100644
+--- a/README.md
++++ b/README.md
+@@ -25,7 +25,7 @@ To turn on accounts, cloud saves and the gem store, follow **[docs/SETUP-PHASE4.
+ - **Ore:** every deposit tile has a grade (low ×0.6 / normal / high ×1.5). Rich veins (×3, limited amount, low-ore warning) appear while you play and pause while you're away.
+ - **Land:** buy adjacent plots; sand and uranium only exist on bought land.
+ - **Research:** 23 timed projects in 5 tiers (keeps running offline).
+-- **Meta:** tutorial + guided quests, contracts, 3 daily missions (gems), prestige ("sell the company" for shares and perks), gem items (time skip, income ×2, offline cap).
++- **Meta:** how-to-play intro slides (replay from Settings), "what's new" notes after each update, tutorial + guided quests, contracts, 3 daily missions (gems), prestige ("sell the company" for shares and perks), gem items (time skip, income ×2, offline cap).
+ - **Offline progress:** up to 8 h (more with perks/gems); server clock for signed-in players.
+ - **Accounts (v1.0.0):** pick a unique player name before playing; the server creates the account with a random password kept on the device (no login next time) and a one-time recovery code for new devices. Email, Google and LINE can be linked as backups.
+ 
+diff --git a/README.md:Zone.Identifier b/README.md:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/docs/SETUP-PHASE4.md:Zone.Identifier b/docs/SETUP-PHASE4.md:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/index.html:Zone.Identifier b/index.html:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/package-lock.json b/package-lock.json
+index 63a8b1b..6fec1ef 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "0.1.0",
++  "version": "1.1.0",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "ore-to-empire",
+-      "version": "0.1.0",
++      "version": "1.1.0",
+       "dependencies": {
+         "@supabase/supabase-js": "^2.117.2",
+         "pixi.js": "^8.22.0",
+diff --git a/package-lock.json:Zone.Identifier b/package-lock.json:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/package.json b/package.json
+index 28846da..db8a4e1 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "1.0.0",
++  "version": "1.1.0",
+   "scripts": {
+     "dev": "vite",
+     "build": "tsc --noEmit && vite build",
+@@ -27,4 +27,4 @@
+   },
+   "private": true,
+   "type": "module"
+-}
++}
+\ No newline at end of file
+diff --git a/package.json:Zone.Identifier b/package.json:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/public/_headers b/public/_headers
+new file mode 100644
+index 0000000..4b15407
+--- /dev/null
++++ b/public/_headers
+@@ -0,0 +1,8 @@
++/*
++  X-Frame-Options: DENY
++  X-Content-Type-Options: nosniff
++  Referrer-Policy: strict-origin-when-cross-origin
++  Permissions-Policy: camera=(), microphone=(), geolocation=()
++
++/assets/*
++  Cache-Control: public, max-age=31536000, immutable
+diff --git a/public/_redirects b/public/_redirects
+new file mode 100644
+index 0000000..bbb3e7a
+--- /dev/null
++++ b/public/_redirects
+@@ -0,0 +1 @@
++/*  /index.html  200
+diff --git a/public/line-callback.html:Zone.Identifier b/public/line-callback.html:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/scripts/release.mjs:Zone.Identifier b/scripts/release.mjs:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/audio.ts:Zone.Identifier b/src/audio.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/config/balance.ts:Zone.Identifier b/src/config/balance.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/config/meta.ts:Zone.Identifier b/src/config/meta.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/actions.ts:Zone.Identifier b/src/core/actions.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/contracts.ts:Zone.Identifier b/src/core/contracts.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/daily.ts:Zone.Identifier b/src/core/daily.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/economy.ts:Zone.Identifier b/src/core/economy.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/fleet.ts:Zone.Identifier b/src/core/fleet.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/gems.ts:Zone.Identifier b/src/core/gems.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/land.ts:Zone.Identifier b/src/core/land.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/market.ts:Zone.Identifier b/src/core/market.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/offline.ts:Zone.Identifier b/src/core/offline.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/pathfind.ts:Zone.Identifier b/src/core/pathfind.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/player.ts:Zone.Identifier b/src/core/player.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/prestige.ts b/src/core/prestige.ts
+index 992f161..1926fe1 100644
+--- a/src/core/prestige.ts
++++ b/src/core/prestige.ts
+@@ -55,7 +55,7 @@ export function prestige(s: GameState, seed = Math.floor(Math.random() * 1e9), n
+   next.boostUntil = s.boostUntil;
+   next.offlineBonusHours = s.offlineBonusHours;
+   next.daily = s.daily;
+-  next.quests = { done: QUESTS.map((q) => q.id), tutorialSkipped: true };
++  next.quests = { done: QUESTS.map((q) => q.id), tutorialSkipped: true, introSeen: true };
+   next.money += (next.prestige.perks.p_cash ?? 0) * PERK_VALUES.cashPerLevel;
+ 
+   const keepTier = (next.prestige.perks.p_research ?? 0) - 1; // 0 → tier A, 1 → tiers A+B
+diff --git a/src/core/prestige.ts:Zone.Identifier b/src/core/prestige.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/quests.ts:Zone.Identifier b/src/core/quests.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/research.ts:Zone.Identifier b/src/core/research.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/save.ts:Zone.Identifier b/src/core/save.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/sim.ts:Zone.Identifier b/src/core/sim.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/state.ts b/src/core/state.ts
+index 30f407c..568dee1 100644
+--- a/src/core/state.ts
++++ b/src/core/state.ts
+@@ -220,7 +220,7 @@ export function newGame(seed = Math.floor(Math.random() * 1e9), now = Date.now()
+       trips: 0,
+       localEarned: 0,
+     },
+-    quests: { done: [], tutorialSkipped: false },
++    quests: { done: [], tutorialSkipped: false, introSeen: false },
+     settings: { lang: 'th', sound: true },
+     research: { done: [], active: null },
+     markets: freshMarkets(),
+diff --git a/src/core/state.ts:Zone.Identifier b/src/core/state.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/tidy.ts:Zone.Identifier b/src/core/tidy.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/types.ts b/src/core/types.ts
+index 22e4b26..28f9afa 100644
+--- a/src/core/types.ts
++++ b/src/core/types.ts
+@@ -143,8 +143,10 @@ export interface GameState {
+   beltLevel: number;
+   power: { gen: number; demand: number; satisfaction: number; battery: number; batteryMax: number };
+   stats: Stats;
+-  quests: { done: string[]; tutorialSkipped: boolean };
+-  settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView };
++  /** introSeen: false only on a fresh save until the intro popup is closed; older saves lack it (= seen) */
++  quests: { done: string[]; tutorialSkipped: boolean; introSeen?: boolean };
++  /** seenVersion: the last game version whose "what's new" notes the player closed */
++  settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView; seenVersion?: string };
+   /** the player's name (v1.0.0; older saves don't have one until the player picks it) */
+   player?: { name: string };
+ 
+diff --git a/src/core/types.ts:Zone.Identifier b/src/core/types.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/core/veins.ts:Zone.Identifier b/src/core/veins.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/game.ts b/src/game.ts
+index 8197de2..071c31e 100644
+--- a/src/game.ts
++++ b/src/game.ts
+@@ -75,6 +75,8 @@ export interface UiState {
+   focus: [number, number] | null;
+   /** a proposed belt layout waiting for the player to accept */
+   tidy: TidyPlan | null;
++  /** the intro slides were reopened from Settings */
++  intro: boolean;
+ }
+ 
+ /**
+@@ -87,6 +89,8 @@ export interface OnlineBridge {
+   claimDaily(day: string, key: string, gems: number): Promise<{ ok: true; gems: number } | { ok: false; reason: string }>;
+   /** persists immediately (used after prestige / big changes) */
+   saveNow?(state: GameState): void;
++  /** number of players currently online, or null if not yet connected */
++  onlineCount?: number | null;
+ }
+ 
+ type Listener = () => void;
+@@ -111,6 +115,7 @@ export class Game {
+     tile: null,
+     focus: null,
+     tidy: null,
++    intro: false,
+   };
+   events: SimEvent[] = [];
+   structureVersion = 0;
+@@ -721,6 +726,28 @@ export class Game {
+     this.structureChanged();
+   }
+ 
++  openIntro() {
++    this.ui = { ...this.ui, panel: 'none', intro: true };
++    this.emit();
++  }
++
++  closeIntro() {
++    this.ui.intro = false;
++    if (this.state.quests.introSeen === false) {
++      // a new player starts on this version: no "what's new" for it
++      this.state.quests.introSeen = true;
++      this.state.settings.seenVersion = __APP_VERSION__;
++      this.save();
++    }
++    this.emit();
++  }
++
++  dismissWhatsNew() {
++    this.state.settings.seenVersion = __APP_VERSION__;
++    this.save();
++    this.emit();
++  }
++
+   dismissOffline() {
+     this.ui.offline = null;
+     this.play('coins');
+diff --git a/src/game.ts:Zone.Identifier b/src/game.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 36c6af2..4a2595b 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -108,6 +108,26 @@ export const en = {
+   'ui.allQuestsDone': 'All goals done. Keep growing your empire!',
+   'ui.skipTutorial': 'Skip tutorial',
+   'ui.tutorial': 'Tutorial',
++  'intro.goal.t': 'Welcome to Ore to Empire',
++  'intro.goal.d': 'Start with a small mine, turn ore into ever more valuable goods, and grow it into an industrial empire.',
++  'intro.mine.t': 'Mine ore, lay belts',
++  'intro.mine.d': 'Place a drill on an ore deposit and connect a belt to your HQ. Anything that reaches the HQ is sold right away.',
++  'intro.smelt.t': 'Process and expand',
++  'intro.smelt.d': 'Smelted bars sell for far more than raw ore. Spend the money on more machines, power, research and exports.',
++  'intro.quests.t': 'Follow the goals',
++  'intro.quests.d': 'The goal card in the corner tells you what to do next, and the button to press pulses.',
++  'intro.skip': 'Skip',
++  'intro.back': 'Back',
++  'intro.next': 'Next',
++  'intro.start': 'Start playing',
++  'intro.howToPlay': 'How to play',
++  'intro.open': 'Show again',
++  'news.title': "What's new",
++  'news.1': 'A 4-page how-to-play intro for new players: mining, belts, processing and goals.',
++  'news.2': 'Replay it any time from Settings → How to play → Show again.',
++  'news.3': 'This window will tell you what changed every time the game updates.',
++  'news.ok': 'Got it',
++  'news.howToPlay': 'How to play',
+   'ui.quest': 'Goal',
+   'ui.welcomeBack': 'Welcome back!',
+   'ui.awayFor': 'You were away for {time}.',
+@@ -201,6 +221,7 @@ export const en = {
+   'ui.prestige': 'Sell company',
+   'ui.shop': 'Gem shop',
+   'ui.gems': 'Gems',
++  'ui.onlineCount': '{n} online',
+   'ui.time': 'Time',
+   'ui.start': 'Start',
+   'ui.researching': 'Researching',
+diff --git a/src/i18n/en.ts:Zone.Identifier b/src/i18n/en.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/i18n/index.ts:Zone.Identifier b/src/i18n/index.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index b413b49..efeaf69 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -110,6 +110,26 @@ export const th: Dict = {
+   'ui.allQuestsDone': 'ทำเป้าหมายครบแล้ว ขยายอาณาจักรต่อไป!',
+   'ui.skipTutorial': 'ข้ามบทสอน',
+   'ui.tutorial': 'บทสอน',
++  'intro.goal.t': 'ยินดีต้อนรับสู่ Ore to Empire',
++  'intro.goal.d': 'เริ่มจากเหมืองแร่เล็กๆ แปรรูปเป็นสินค้าที่มีมูลค่าสูงขึ้นเรื่อยๆ จนกลายเป็นอาณาจักรอุตสาหกรรม',
++  'intro.mine.t': 'ขุดแร่ แล้วต่อสายพาน',
++  'intro.mine.d': 'วางเครื่องขุดบนสายแร่ แล้วต่อสายพานเข้าสำนักงานใหญ่ ของที่ไปถึงสำนักงานใหญ่จะขายเป็นเงินทันที',
++  'intro.smelt.t': 'แปรรูปแล้วขยายกิจการ',
++  'intro.smelt.d': 'หลอมแร่เป็นโลหะแท่งจะขายได้แพงกว่ามาก เอาเงินไปสร้างเครื่องเพิ่ม ผลิตไฟฟ้า วิจัย และส่งออก',
++  'intro.quests.t': 'ทำตามภารกิจ',
++  'intro.quests.d': 'การ์ดภารกิจที่มุมจอจะบอกว่าต้องทำอะไรต่อ ปุ่มที่ต้องกดจะกะพริบให้เห็น',
++  'intro.skip': 'ข้าม',
++  'intro.back': 'ย้อนกลับ',
++  'intro.next': 'ถัดไป',
++  'intro.start': 'เริ่มเล่น',
++  'intro.howToPlay': 'วิธีเล่น',
++  'intro.open': 'ดูอีกครั้ง',
++  'news.title': 'มีอะไรใหม่',
++  'news.1': 'หน้าแนะนำวิธีเล่น 4 หน้าสำหรับผู้เล่นใหม่ อธิบายการขุดแร่ ต่อสายพาน แปรรูป และการทำภารกิจ',
++  'news.2': 'ดูวิธีเล่นซ้ำได้ทุกเมื่อที่ ตั้งค่า → วิธีเล่น → ดูอีกครั้ง',
++  'news.3': 'หน้าต่างนี้จะแจ้งรายละเอียดทุกครั้งที่เกมอัปเดต',
++  'news.ok': 'รับทราบ',
++  'news.howToPlay': 'ดูวิธีเล่น',
+   'ui.quest': 'เป้าหมาย',
+   'ui.welcomeBack': 'ยินดีต้อนรับกลับมา!',
+   'ui.awayFor': 'คุณไม่อยู่ {time}',
+@@ -203,6 +223,7 @@ export const th: Dict = {
+   'ui.prestige': 'ขายกิจการ',
+   'ui.shop': 'ร้านเพชร',
+   'ui.gems': 'เพชร',
++  'ui.onlineCount': 'ออนไลน์ {n} คน',
+   'ui.time': 'เวลา',
+   'ui.start': 'เริ่ม',
+   'ui.researching': 'กำลังวิจัย',
+diff --git a/src/i18n/th.ts:Zone.Identifier b/src/i18n/th.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/main.tsx:Zone.Identifier b/src/main.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/online/config.ts:Zone.Identifier b/src/online/config.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/online/device.ts:Zone.Identifier b/src/online/device.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/online/errors.ts:Zone.Identifier b/src/online/errors.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/online/omise.ts:Zone.Identifier b/src/online/omise.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/online/online.ts b/src/online/online.ts
+index 2bd30c0..bb1a8f8 100644
+--- a/src/online/online.ts
++++ b/src/online/online.ts
+@@ -25,6 +25,8 @@ export interface OnlineUi {
+   payment: { purchaseId: string; pack: PackId; qr: string | null; status: 'pending' | 'paid' | 'failed' | 'expired'; failure?: string } | null;
+   /** the player's unique name (null until picked) */
+   username: string | null;
++  /** number of players currently online (null = not connected yet) */
++  onlineCount: number | null;
+   /**
+    * The step shown before play:
+    *  name     — pick a name (creates the account)
+@@ -92,6 +94,7 @@ export class Online implements OnlineBridge {
+     recoverName: '',
+     newCode: null,
+     linkSentTo: null,
++    onlineCount: null,
+   };
+   private user: User | null = null;
+   private saving = false;
+@@ -118,6 +121,10 @@ export class Online implements OnlineBridge {
+     return !!this.user;
+   }
+ 
++  get onlineCount(): number | null {
++    return this.ui.onlineCount;
++  }
++
+   private changed() {
+     this.game.emit();
+   }
+@@ -167,10 +174,22 @@ export class Online implements OnlineBridge {
+     document.addEventListener('visibilitychange', () => {
+       if (document.visibilityState === 'hidden') void this.cloudSave();
+     });
++    this.trackPresence();
+     this.ui.ready = true;
+     this.changed();
+   }
+ 
++  private trackPresence() {
++    const channel = this.sb.channel('online-players', { config: { presence: { key: this.user?.id ?? 'guest' } } });
++    channel.on('presence', { event: 'sync' }, () => {
++      this.ui.onlineCount = Object.keys(channel.presenceState()).length;
++      this.changed();
++    });
++    channel.subscribe(async (status) => {
++      if (status === 'SUBSCRIBED') await channel.track({ t: Date.now() });
++    });
++  }
++
+   /**
+    * Picks between the cloud save and this device's save, using SERVER time for
+    * offline progress (a player can't fast-forward by changing the device clock).
+diff --git a/src/online/online.ts:Zone.Identifier b/src/online/online.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/online/turnstile.ts:Zone.Identifier b/src/online/turnstile.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/render/renderer.ts:Zone.Identifier b/src/render/renderer.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/render/theme.ts:Zone.Identifier b/src/render/theme.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/App.tsx b/src/ui/App.tsx
+index 3252d32..bfc3768 100644
+--- a/src/ui/App.tsx
++++ b/src/ui/App.tsx
+@@ -12,6 +12,8 @@ import { ShopPanel } from './ShopPanel';
+ import { TileSheet } from './TileSheet';
+ import { AccountPanel, ConflictModal, PaymentModal } from './OnlinePanels';
+ import { Onboarding } from './Onboarding';
++import { Intro } from './Intro';
++import { WhatsNew } from './WhatsNew';
+ 
+ export function App() {
+   const [game] = useState(() => new Game(undefined, { deferCatchUp: hasStoredSession() }));
+@@ -84,6 +86,8 @@ export function App() {
+         <ConflictModal />
+         <OfflineModal />
+         <Onboarding />
++        <Intro />
++        <WhatsNew />
+       </div>
+     </GameContext.Provider>
+   );
+diff --git a/src/ui/App.tsx:Zone.Identifier b/src/ui/App.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/BuildDrawer.tsx:Zone.Identifier b/src/ui/BuildDrawer.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/Hud.tsx b/src/ui/Hud.tsx
+index 3243b4f..63ba757 100644
+--- a/src/ui/Hud.tsx
++++ b/src/ui/Hud.tsx
+@@ -47,6 +47,12 @@ export function TopBar() {
+         <button className="chip gems mono" onClick={() => game.openPanel('shop')} aria-label={t('ui.gems')}>
+           <GemIcon /> {s.gems}
+         </button>
++        {(game.online?.onlineCount ?? 0) > 0 && (
++          <span className="chip online-count" title={t('ui.onlineCount', { n: game.online!.onlineCount! })}>
++            <span className="online-dot" />
++            {game.online!.onlineCount}
++          </span>
++        )}
+         {s.research.active && (
+           <button className="chip mono" onClick={() => game.openPanel('research')}>
+             <NavIcon panel="research" size={14} /> {fmtClock(s.research.active.remaining)}
+diff --git a/src/ui/Hud.tsx:Zone.Identifier b/src/ui/Hud.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/Inspector.tsx:Zone.Identifier b/src/ui/Inspector.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/Intro.tsx b/src/ui/Intro.tsx
+new file mode 100644
+index 0000000..a34d0b6
+--- /dev/null
++++ b/src/ui/Intro.tsx
+@@ -0,0 +1,114 @@
++import { useEffect, useRef, useState } from 'react';
++import type { BuildingType, ItemId } from '../config/balance';
++import { QUESTS } from '../core/quests';
++import { onlineConfigured } from '../online/config';
++import type { Online } from '../online/online';
++import type { Game } from '../game';
++import { useGame, useT } from './hooks';
++import { BuildingIcon, ItemIcon } from './icons';
++
++type Step = { item: ItemId } | { building: BuildingType };
++
++const SLIDES: { id: string; chain: Step[] }[] = [
++  { id: 'goal', chain: [{ item: 'iron_ore' }, { item: 'iron_bar' }, { item: 'motor' }, { item: 'electric_vehicle' }] },
++  { id: 'mine', chain: [{ item: 'iron_ore' }, { building: 'miner' }, { building: 'hq' }] },
++  { id: 'smelt', chain: [{ building: 'miner' }, { building: 'furnace' }, { building: 'hq' }] },
++  { id: 'quests', chain: [] },
++];
++
++/** the name step, offline earnings and a cloud-save conflict are all out of the way */
++export function startupPopupsDone(game: Game): boolean {
++  if (game.ui.offline) return false;
++  if (!onlineConfigured) return !!game.state.player;
++  const online = game.online as Online | null;
++  return !!online && online.ui.ready && !!online.ui.username && !online.ui.onboarding && !online.ui.conflict;
++}
++
++/** a brand-new save sees the intro once */
++function firstRunReady(game: Game): boolean {
++  return game.state.quests.introSeen === false && startupPopupsDone(game);
++}
++
++/** Intro slides shown before the first play (and from Settings → How to play). */
++export function Intro() {
++  const game = useGame();
++  if (!game.ui.intro && !firstRunReady(game)) return null;
++  return <IntroSlides />;
++}
++
++function IntroSlides() {
++  const game = useGame();
++  const t = useT();
++  const [i, setI] = useState(0);
++  const swipeX = useRef<number | null>(null);
++  const last = i === SLIDES.length - 1;
++  const go = (n: number) => setI(Math.max(0, Math.min(SLIDES.length - 1, n)));
++
++  useEffect(() => {
++    const onKey = (e: KeyboardEvent) => {
++      if (e.key === 'ArrowRight') setI((n) => Math.min(SLIDES.length - 1, n + 1));
++      else if (e.key === 'ArrowLeft') setI((n) => Math.max(0, n - 1));
++    };
++    window.addEventListener('keydown', onKey);
++    return () => window.removeEventListener('keydown', onKey);
++  }, []);
++
++  const slide = SLIDES[i];
++  return (
++    <div className="modal-backdrop intro-backdrop">
++      <div
++        className="modal intro"
++        role="dialog"
++        aria-modal="true"
++        aria-labelledby="intro-title"
++        onPointerDown={(e) => (swipeX.current = e.clientX)}
++        onPointerUp={(e) => {
++          if (swipeX.current === null) return;
++          const dx = e.clientX - swipeX.current;
++          swipeX.current = null;
++          if (Math.abs(dx) > 50) go(i + (dx < 0 ? 1 : -1));
++        }}
++      >
++        <button className="link-btn intro-skip" onClick={() => game.closeIntro()}>
++          {t('intro.skip')}
++        </button>
++        <div className="intro-art" key={slide.id}>
++          {slide.chain.length > 0 ? (
++            slide.chain.map((s, n) => (
++              <span key={n} className="intro-step">
++                {n > 0 && <span className="intro-arrow">→</span>}
++                {'item' in s ? <ItemIcon item={s.item} size={34} /> : <BuildingIcon type={s.building} size={44} />}
++              </span>
++            ))
++          ) : (
++            <div className="quest-card tutorial intro-quest">
++              <span className="quest-kind">{t('ui.tutorial')} 1/{QUESTS.filter((q) => q.tutorial).length}</span>
++              <div className="quest-title">{t('q.tut_miner.t')}</div>
++            </div>
++          )}
++        </div>
++        <h2 id="intro-title">{t(`intro.${slide.id}.t`)}</h2>
++        <p className="dim">{t(`intro.${slide.id}.d`)}</p>
++        <div className="intro-dots" aria-hidden>
++          {SLIDES.map((s, n) => (
++            <button key={s.id} className={n === i ? 'active' : ''} tabIndex={-1} onClick={() => go(n)} />
++          ))}
++        </div>
++        <div className="intro-nav">
++          <button className="btn ghost" disabled={i === 0} onClick={() => go(i - 1)}>
++            ← {t('intro.back')}
++          </button>
++          {last ? (
++            <button className="btn primary" onClick={() => game.closeIntro()}>
++              {t('intro.start')}
++            </button>
++          ) : (
++            <button className="btn primary" onClick={() => go(i + 1)}>
++              {t('intro.next')} →
++            </button>
++          )}
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/ui/MetaPanels.tsx:Zone.Identifier b/src/ui/MetaPanels.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/Onboarding.tsx:Zone.Identifier b/src/ui/Onboarding.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/OnlinePanels.tsx:Zone.Identifier b/src/ui/OnlinePanels.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/Panels.tsx b/src/ui/Panels.tsx
+index 1702ec3..ddaad37 100644
+--- a/src/ui/Panels.tsx
++++ b/src/ui/Panels.tsx
+@@ -130,6 +130,12 @@ export function SettingsPanel() {
+           </button>
+         </div>
+       </div>
++      <div className="setting">
++        <span>{t('intro.howToPlay')}</span>
++        <button className="btn small" onClick={() => game.openIntro()}>
++          {t('intro.open')}
++        </button>
++      </div>
+       <div className="setting">
+         <span className="dim small">{t('ui.zoomHint')}</span>
+       </div>
+diff --git a/src/ui/Panels.tsx:Zone.Identifier b/src/ui/Panels.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/ShopPanel.tsx:Zone.Identifier b/src/ui/ShopPanel.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/TileSheet.tsx:Zone.Identifier b/src/ui/TileSheet.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/WhatsNew.tsx b/src/ui/WhatsNew.tsx
+new file mode 100644
+index 0000000..549a276
+--- /dev/null
++++ b/src/ui/WhatsNew.tsx
+@@ -0,0 +1,41 @@
++import { startupPopupsDone } from './Intro';
++import { useGame, useT } from './hooks';
++
++/** i18n keys of this version's notes — replace them on every release that players should hear about */
++const NOTES = ['news.1', 'news.2', 'news.3'];
++
++/** Patch notes, shown once to returning players after the game updates. */
++export function WhatsNew() {
++  const game = useGame();
++  const t = useT();
++  const s = game.state;
++  if (game.ui.intro || s.quests.introSeen === false || s.settings.seenVersion === __APP_VERSION__) return null;
++  if (!startupPopupsDone(game)) return null;
++  return (
++    <div className="modal-backdrop">
++      <div className="modal whats-new" role="dialog" aria-modal="true" aria-labelledby="news-title">
++        <span className="whats-new-tag mono">v{__APP_VERSION__}</span>
++        <h2 id="news-title">{t('news.title')}</h2>
++        <ul>
++          {NOTES.map((k) => (
++            <li key={k}>{t(k)}</li>
++          ))}
++        </ul>
++        <div className="intro-nav">
++          <button
++            className="btn ghost"
++            onClick={() => {
++              game.dismissWhatsNew();
++              game.openIntro();
++            }}
++          >
++            {t('news.howToPlay')}
++          </button>
++          <button className="btn primary" onClick={() => game.dismissWhatsNew()}>
++            {t('news.ok')}
++          </button>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/ui/hooks.ts:Zone.Identifier b/src/ui/hooks.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/icons.tsx:Zone.Identifier b/src/ui/icons.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/nav.tsx:Zone.Identifier b/src/ui/nav.tsx:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/ui/styles.css b/src/ui/styles.css
+index 2437cb6..546256f 100644
+--- a/src/ui/styles.css
++++ b/src/ui/styles.css
+@@ -974,6 +974,19 @@ button {
+   border-color: var(--amber);
+   color: var(--amber);
+ }
++.chip.online-count {
++  color: #7defa7;
++  border-color: #7defa740;
++  gap: 6px;
++}
++.online-dot {
++  width: 7px;
++  height: 7px;
++  border-radius: 50%;
++  background: #7defa7;
++  box-shadow: 0 0 5px #7defa7;
++  flex-shrink: 0;
++}
+ .icon-btn {
+   position: relative;
+ }
+@@ -1740,3 +1753,112 @@ select:focus-visible {
+ .acct-section form {
+   margin: 0;
+ }
++
++/* ------------------------------------------------------------ intro slides */
++.intro {
++  position: relative;
++  padding: 26px 22px 18px;
++  align-items: center;
++  text-align: center;
++  gap: 8px;
++  touch-action: pan-y;
++  user-select: none;
++}
++.intro h2 {
++  margin: 0;
++  font-size: 20px;
++}
++.intro p {
++  margin: 0;
++  min-height: 4.5em;
++  line-height: 1.5;
++}
++.intro-skip {
++  position: absolute;
++  top: 12px;
++  right: 14px;
++}
++.intro-art {
++  display: flex;
++  align-items: center;
++  justify-content: center;
++  min-height: 84px;
++  margin: 10px 0 6px;
++  animation: introIn 0.25s ease-out;
++}
++.intro-step {
++  display: inline-flex;
++  align-items: center;
++}
++.intro-arrow {
++  margin: 0 8px;
++  color: var(--orange);
++  font-weight: 700;
++}
++.intro-quest {
++  text-align: left;
++  pointer-events: none;
++}
++.intro-dots {
++  display: flex;
++  gap: 8px;
++  margin: 8px 0 4px;
++}
++.intro-dots button {
++  width: 8px;
++  height: 8px;
++  padding: 0;
++  border: none;
++  border-radius: 50%;
++  background: var(--edge-2);
++}
++.intro-dots button.active {
++  background: var(--orange);
++}
++.intro-nav {
++  display: flex;
++  justify-content: space-between;
++  width: 100%;
++  gap: 10px;
++  margin-top: 8px;
++}
++.intro-nav .btn {
++  flex: 1;
++}
++@keyframes introIn {
++  from {
++    opacity: 0;
++    transform: translateY(6px);
++  }
++}
++@media (prefers-reduced-motion: reduce) {
++  .intro-art {
++    animation: none;
++  }
++}
++
++/* ------------------------------------------------------------ what's new */
++.whats-new {
++  padding: 22px 22px 18px;
++  gap: 8px;
++}
++.whats-new h2 {
++  margin: 0;
++  font-size: 20px;
++}
++.whats-new-tag {
++  align-self: flex-start;
++  font-size: 12px;
++  color: var(--orange);
++  border: 1px solid var(--orange);
++  border-radius: 999px;
++  padding: 1px 8px;
++}
++.whats-new ul {
++  margin: 4px 0 8px;
++  padding-left: 20px;
++  line-height: 1.55;
++}
++.whats-new li + li {
++  margin-top: 6px;
++}
+diff --git a/src/ui/styles.css:Zone.Identifier b/src/ui/styles.css:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/src/vite-env.d.ts:Zone.Identifier b/src/vite-env.d.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/supabase/functions/_shared/packs.ts:Zone.Identifier b/supabase/functions/_shared/packs.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/supabase/functions/_shared/util.ts:Zone.Identifier b/supabase/functions/_shared/util.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/supabase/functions/create-charge/index.ts:Zone.Identifier b/supabase/functions/create-charge/index.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/supabase/functions/line-auth/index.ts b/supabase/functions/line-auth/index.ts
+index f118e3c..8da3975 100644
+--- a/supabase/functions/line-auth/index.ts
++++ b/supabase/functions/line-auth/index.ts
+@@ -77,15 +77,20 @@ Deno.serve(async (req) => {
+     email = u.data.user?.email ?? undefined;
+   }
+   if (!email) {
+-    email = (claims.email as string | undefined)?.toLowerCase() ?? `${lineSub.toLowerCase()}@${PLACEHOLDER_DOMAIN}`;
++    // Always use a placeholder derived from the LINE subject — never claims.email.
++    // LINE does not guarantee the email claim is verified, so using it to match an
++    // existing Supabase account would allow account takeover: an attacker could set
++    // the victim's email on their LINE profile and silently inherit that account.
++    // Linking a real email happens only through the authenticated path (step 3a above).
++    email = `${lineSub.toLowerCase()}@${PLACEHOLDER_DOMAIN}`;
+     const created = await db.auth.admin.createUser({
+       email,
+       email_confirm: true,
+       user_metadata: { full_name: claims.name ?? 'LINE user', avatar_url: claims.picture ?? null, provider: 'line' },
+       app_metadata: { line_sub: lineSub },
+     });
+-    // "already registered" is fine — the magic link below signs into the existing account
+-    if (created.error && !/already|exists|registered/i.test(created.error.message)) {
++    if (created.error) {
++      // lineSub is unique per LINE channel, so placeholder collision cannot happen.
+       return json({ error: 'create_user_failed', detail: created.error.message }, 500);
+     }
+   }
+diff --git a/supabase/functions/line-auth/index.ts:Zone.Identifier b/supabase/functions/line-auth/index.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/supabase/functions/omise-webhook/index.ts:Zone.Identifier b/supabase/functions/omise-webhook/index.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/supabase/functions/player-account/index.ts:Zone.Identifier b/supabase/functions/player-account/index.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/supabase/migrations/20261006000000_init.sql:Zone.Identifier b/supabase/migrations/20261006000000_init.sql:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/supabase/migrations/20261006020000_player_names.sql:Zone.Identifier b/supabase/migrations/20261006020000_player_names.sql:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/intro.test.ts b/tests/intro.test.ts
+new file mode 100644
+index 0000000..cb53b9c
+--- /dev/null
++++ b/tests/intro.test.ts
+@@ -0,0 +1,22 @@
++import { describe, expect, it } from 'vitest';
++import { prestige } from '../src/core/prestige';
++import { deserialize, serialize } from '../src/core/save';
++import { newGame } from '../src/core/state';
++
++describe('intro popup flag', () => {
++  it('is unseen on a fresh save and survives a save round-trip', () => {
++    const s = newGame(1);
++    expect(s.quests.introSeen).toBe(false);
++    expect(deserialize(serialize(s))!.quests.introSeen).toBe(false);
++  });
++
++  it('counts as seen on saves from before the intro existed', () => {
++    const s = newGame(1);
++    delete s.quests.introSeen;
++    expect(deserialize(serialize(s))!.quests.introSeen).not.toBe(false);
++  });
++
++  it('does not show again after selling the company', () => {
++    expect(prestige(newGame(1), 2).quests.introSeen).toBe(true);
++  });
++});
+diff --git a/tests/move.test.ts:Zone.Identifier b/tests/move.test.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/phase2.test.ts:Zone.Identifier b/tests/phase2.test.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/player.test.ts:Zone.Identifier b/tests/player.test.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/prices.test.ts:Zone.Identifier b/tests/prices.test.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/sim.test.ts:Zone.Identifier b/tests/sim.test.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/tidy.test.ts:Zone.Identifier b/tests/tidy.test.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/tests/veins.test.ts:Zone.Identifier b/tests/veins.test.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/tsconfig.json:Zone.Identifier b/tsconfig.json:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
+
+diff --git a/vite.config.ts:Zone.Identifier b/vite.config.ts:Zone.Identifier
+new file mode 100644
+index 0000000000000000000000000000000000000000..f07b009f71036eb9c215adc25d528c33c452e77e
+GIT binary patch
+literal 93
+zcma!!%Fjy;DN4*MPD?F{<>dl#JyUFrdAWj8fg(kzMWIDGw$4^Dp~b01#WB9Yp1PUN
+qiFqmcF)sP#c{%xsDaA4QMX9<a`MRmO1(`rrnW3Hm5LRUtFaQ7r%pg(#
+
+literal 0
+HcmV?d00001
