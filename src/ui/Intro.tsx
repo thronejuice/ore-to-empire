@@ -6,14 +6,15 @@ import type { Online } from '../online/online';
 import type { Game } from '../game';
 import { useGame, useT } from './hooks';
 import { BuildingIcon, ItemIcon } from './icons';
+import { IntroScene, type SceneId } from './IntroScene';
 
 type Step = { item: ItemId } | { building: BuildingType };
 
-const SLIDES: { id: string; chain: Step[] }[] = [
+const SLIDES: { id: string; chain?: Step[]; scene?: SceneId }[] = [
   { id: 'goal', chain: [{ item: 'iron_ore' }, { item: 'iron_bar' }, { item: 'motor' }, { item: 'electric_vehicle' }] },
-  { id: 'mine', chain: [{ item: 'iron_ore' }, { building: 'miner' }, { building: 'hq' }] },
-  { id: 'smelt', chain: [{ building: 'miner' }, { building: 'furnace' }, { building: 'hq' }] },
-  { id: 'quests', chain: [] },
+  { id: 'mine', scene: 'mine' },
+  { id: 'smelt', scene: 'smelt' },
+  { id: 'quests' },
 ];
 
 /** the name step, offline earnings and a cloud-save conflict are all out of the way */
@@ -73,7 +74,9 @@ function IntroSlides() {
           {t('intro.skip')}
         </button>
         <div className="intro-art" key={slide.id}>
-          {slide.chain.length > 0 ? (
+          {slide.scene ? (
+            <IntroScene id={slide.scene} />
+          ) : slide.chain ? (
             slide.chain.map((s, n) => (
               <span key={n} className="intro-step">
                 {n > 0 && <span className="intro-arrow">→</span>}

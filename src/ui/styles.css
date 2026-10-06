@@ -1862,3 +1862,30 @@ select:focus-visible {
 .whats-new li + li {
   margin-top: 6px;
 }
+
+/* animated how-to scenes inside the intro slides */
+.intro-scene {
+  width: 100%;
+}
+.intro-scene svg {
+  display: block;
+  width: 100%;
+  height: auto;
+  border-radius: 10px;
+  border: 1px solid var(--edge);
+}
+.intro .intro-step-caption {
+  margin: 8px 0 0;
+  min-height: 1.5em;
+  font-weight: 600;
+  font-size: 14px;
+  color: var(--text);
+}
+.intro-steps {
+  margin: 8px 0 0;
+  padding-left: 0;
+  list-style: none;
+  text-align: left;
+  font-size: 13px;
+  line-height: 1.6;
+}

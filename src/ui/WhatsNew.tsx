@@ -2,7 +2,7 @@ import { startupPopupsDone } from './Intro';
 import { useGame, useT } from './hooks';
 
 /** i18n keys of this version's notes — replace them on every release that players should hear about */
-const NOTES = ['news.1', 'news.2', 'news.3'];
+const NOTES = ['news.1', 'news.2'];
 
 /** Patch notes, shown once to returning players after the game updates. */
 export function WhatsNew() {
