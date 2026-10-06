@@ -620,6 +620,42 @@ export class Renderer {
       if (ui.hover) this.ghost(g, mode.type, ui.hover[0], ui.hover[1]);
     }
 
+    if (mode.kind === 'move') {
+      const mb = getBuilding(s, mode.id);
+      if (mb) {
+        this.outline(g, mb, C.orange, 0.5 + 0.5 * pulse);
+        if (mb.type === 'miner') {
+          // drills can only go onto deposits: show the free ones
+          for (let y = 0; y < s.world.size; y++)
+            for (let x = 0; x < s.world.size; x++) {
+              if (!s.world.deposits[idx(s, x, y)] || (x === mb.x && y === mb.y)) continue;
+              if (!canPlace(s, 'miner', x, y, mb).ok) continue;
+              g.roundRect(x * TILE + 2, y * TILE + 2, TILE - 4, TILE - 4, 6).stroke({ width: 2, color: C.amber, alpha: 0.35 + 0.5 * pulse });
+            }
+        }
+        if (ui.hover && (ui.hover[0] !== mb.x || ui.hover[1] !== mb.y)) {
+          const def = BUILDINGS[mb.type];
+          const ok = canPlace(s, mb.type, ui.hover[0], ui.hover[1], mb).ok;
+          const [hx, hy] = ui.hover;
+          g.roundRect(hx * TILE + 3, hy * TILE + 3, def.w * TILE - 6, def.h * TILE - 6, 7)
+            .fill({ color: ok ? C.ok : C.bad, alpha: 0.18 })
+            .stroke({ width: 2, color: ok ? C.ok : C.bad, alpha: 0.9 });
+          // dashed hint from the old spot to the new one
+          const ax = (mb.x + def.w / 2) * TILE;
+          const ay = (mb.y + def.h / 2) * TILE;
+          const bx = (hx + def.w / 2) * TILE;
+          const by = (hy + def.h / 2) * TILE;
+          const len = Math.hypot(bx - ax, by - ay);
+          for (let d = 0; d < len; d += 14) {
+            const t0 = d / len;
+            const t1 = Math.min(1, (d + 7) / len);
+            g.moveTo(ax + (bx - ax) * t0, ay + (by - ay) * t0).lineTo(ax + (bx - ax) * t1, ay + (by - ay) * t1);
+          }
+          g.stroke({ width: 2, color: ok ? C.ok : C.bad, alpha: 0.6 });
+        }
+      }
+    }
+
     if (mode.kind === 'link') {
       const from = mode.from !== null ? getBuilding(s, mode.from) : undefined;
       // every building that can receive glows softly

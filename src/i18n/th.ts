@@ -430,4 +430,10 @@ export const th: Dict = {
   'err.signInFailed': 'เข้าสู่ระบบไม่สำเร็จ ลองอีกครั้ง',
   'err.paymentFailed': 'ชำระเงินไม่สำเร็จ',
   'err.alreadyBought': 'คุณซื้อแพ็กเริ่มต้นไปแล้ว',
+
+  'ui.move': 'ย้าย',
+  'ui.moveTip': 'ย้ายอาคารนี้ (กด M) สายพานจะย้ายตามไปด้วย',
+  'ui.moveHint': 'แตะตำแหน่งใหม่ของ{name}',
+  'err.cantReroute': 'สายพานไปถึงตำแหน่งนั้นไม่ได้',
+  'err.samePlace': 'อยู่ตำแหน่งนี้อยู่แล้ว',
 };

@@ -11,9 +11,9 @@ import {
 } from '../config/balance';
 import { beltMaxLevel, hasResearch, recipeUnlocked, recipesFor } from './economy';
 import { beltPoints, findPath } from './pathfind';
-import { getBuilding, idx, inBounds, isUnlocked, makeBuilding, occupancy } from './state';
+import { getBuilding, idx, inBounds, invalidateOccupancy, isUnlocked, makeBuilding, occupancy } from './state';
 import { acceptsType } from './sim';
-import type { Building, GameState } from './types';
+import type { Belt, Building, GameState } from './types';
 
 /** Result of an action: ok, or a translation key explaining why not. */
 export type ActionResult<T = undefined> = { ok: true; value: T } | { ok: false; reason: string };
@@ -21,9 +21,23 @@ export type ActionResult<T = undefined> = { ok: true; value: T } | { ok: false; 
 const ok = <T>(value: T): ActionResult<T> => ({ ok: true, value });
 const fail = (reason: string): ActionResult<never> => ({ ok: false, reason });
 
-export function canPlace(state: GameState, type: BuildingType, x: number, y: number): ActionResult<undefined> {
+/**
+ * Can a building of `type` stand at x,y? When moving, `ignore` is the building
+ * being moved: its own cells and its own belts (which get re-routed) don't block.
+ */
+export function canPlace(state: GameState, type: BuildingType, x: number, y: number, ignore?: Building): ActionResult<undefined> {
   const def = BUILDINGS[type];
   const occ = occupancy(state);
+  const ownBeltCells = new Map<number, number>();
+  if (ignore) {
+    for (const belt of state.belts) {
+      if (belt.from !== ignore.id && belt.to !== ignore.id) continue;
+      for (const [px, py] of belt.path) {
+        const i = idx(state, px, py);
+        ownBeltCells.set(i, (ownBeltCells.get(i) ?? 0) + 1);
+      }
+    }
+  }
   for (let dy = 0; dy < def.h; dy++) {
     for (let dx = 0; dx < def.w; dx++) {
       const cx = x + dx;
@@ -31,14 +45,73 @@ export function canPlace(state: GameState, type: BuildingType, x: number, y: num
       if (!inBounds(state, cx, cy)) return fail('err.outOfBounds');
       if (!isUnlocked(state, cx, cy)) return fail('err.locked');
       const i = idx(state, cx, cy);
-      if (occ.building[i]) return fail('err.occupied');
-      if (occ.belts[i]) return fail('err.beltHere');
+      if (occ.building[i] && occ.building[i] !== ignore?.id) return fail('err.occupied');
+      if (occ.belts[i] - (ownBeltCells.get(i) ?? 0) > 0) return fail('err.beltHere');
     }
   }
   if (type === 'miner' && !state.world.deposits[idx(state, x, y)]) return fail('err.needDeposit');
   if (type === 'miner' && state.world.deposits[idx(state, x, y)] === 'uranium_ore' && !hasResearch(state, 'r_nuclear')) return fail('err.needResearch');
-  if (state.money < def.cost) return fail('err.noMoney');
+  if (!ignore && state.money < def.cost) return fail('err.noMoney');
   return ok(undefined);
+}
+
+/**
+ * Moves a building, keeping its level, recipe, contents and belts. Belts are
+ * re-routed to the new spot; items riding them stay on (spread along the new
+ * length). Moving is free except for belt tiles beyond the old lengths.
+ * Nothing changes if any belt can't reach the new spot.
+ */
+export function moveBuilding(state: GameState, id: number, x: number, y: number): ActionResult<{ cost: number }> {
+  const b = getBuilding(state, id);
+  if (!b) return fail('err.notFound');
+  if (b.x === x && b.y === y) return fail('err.samePlace');
+  const check = canPlace(state, b.type, x, y, b);
+  if (!check.ok) return check;
+
+  const own = state.belts.filter((belt) => belt.from === id || belt.to === id);
+  const oldPos = { x: b.x, y: b.y };
+  const oldTiles = own.reduce((a, belt) => a + Math.max(1, belt.path.length), 0);
+
+  // take the building's belts off the map, move it, then route each belt again
+  state.belts = state.belts.filter((belt) => belt.from !== id && belt.to !== id);
+  b.x = x;
+  b.y = y;
+  invalidateOccupancy(state);
+
+  const rerouted: Belt[] = [];
+  let newTiles = 0;
+  for (const belt of own) {
+    const from = getBuilding(state, belt.from)!;
+    const to = getBuilding(state, belt.to)!;
+    const path = findPath(state, from, to);
+    if (!path) {
+      // undo everything
+      state.belts = state.belts.filter((x2) => !rerouted.includes(x2));
+      state.belts.push(...own);
+      b.x = oldPos.x;
+      b.y = oldPos.y;
+      invalidateOccupancy(state);
+      return fail('err.cantReroute');
+    }
+    const { points, length } = beltPoints(from, to, path);
+    const scale = belt.length > 0 ? length / belt.length : 1;
+    const nb = { ...belt, path, points, length, items: belt.items.map((it) => ({ ...it, pos: Math.min(length, it.pos * scale) })) };
+    rerouted.push(nb);
+    state.belts.push(nb); // later belts see this one (they may bridge over it)
+    newTiles += Math.max(1, path.length);
+  }
+  const cost = Math.max(0, newTiles - oldTiles) * BALANCE.beltCostPerTile;
+  if (state.money < cost) {
+    state.belts = state.belts.filter((x2) => !rerouted.includes(x2));
+    state.belts.push(...own);
+    b.x = oldPos.x;
+    b.y = oldPos.y;
+    invalidateOccupancy(state);
+    return fail('err.noMoney');
+  }
+  state.money -= cost;
+  invalidateOccupancy(state);
+  return ok({ cost });
 }
 
 export function placeBuilding(state: GameState, type: BuildingType, x: number, y: number): ActionResult<Building> {

@@ -240,6 +240,11 @@ interface Occupancy {
 
 const occCache = new WeakMap<GameState, Occupancy>();
 
+/** call after moving things without changing the building/belt count */
+export function invalidateOccupancy(state: GameState) {
+  occCache.delete(state);
+}
+
 export function occupancy(state: GameState): Occupancy {
   const key = `${state.nextId}:${state.buildings.length}:${state.belts.length}`;
   const cached = occCache.get(state);

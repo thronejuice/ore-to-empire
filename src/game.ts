@@ -2,6 +2,7 @@ import { BALANCE, BUILDINGS, type BuildingType, type CityId, type ItemId, type R
 import type { GemItemId, PerkId } from './config/meta';
 import {
   createLink,
+  moveBuilding,
   placeBuilding,
   planLink,
   removeBuilding,
@@ -28,7 +29,11 @@ import type { GameState } from './core/types';
 import { translate, type Lang } from './i18n';
 import { sfx, setSoundEnabled, type Sfx } from './audio';
 
-export type Mode = { kind: 'select' } | { kind: 'build'; type: BuildingType } | { kind: 'link'; from: number | null };
+export type Mode =
+  | { kind: 'select' }
+  | { kind: 'build'; type: BuildingType }
+  | { kind: 'link'; from: number | null }
+  | { kind: 'move'; id: number };
 
 export interface Toast {
   id: number;
@@ -358,6 +363,10 @@ export class Game {
     this.setMode({ kind: 'link', from });
   }
 
+  startMove(id: number) {
+    this.setMode({ kind: 'move', id });
+  }
+
   select(id: number | null) {
     this.ui.selected = id;
     this.ui.plot = null;
@@ -374,6 +383,23 @@ export class Game {
         this.play('place');
         this.structureChanged();
         if (this.state.money < BUILDINGS[mode.type].cost) this.setMode({ kind: 'select' });
+      }
+      return;
+    }
+
+    if (mode.kind === 'move') {
+      if (hit?.id === mode.id) {
+        // tapping the building itself cancels
+        this.setMode({ kind: 'select' });
+        this.select(mode.id);
+        return;
+      }
+      const r = moveBuilding(this.state, mode.id, x, y);
+      if (this.result(r)) {
+        this.play('place');
+        this.setMode({ kind: 'select' });
+        this.select(mode.id);
+        this.structureChanged();
       }
       return;
     }

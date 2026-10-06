@@ -31,6 +31,10 @@ export function App() {
     (window as unknown as { __renderer: Renderer }).__renderer = renderer;
     if (canvasHost.current) void renderer.mount(canvasHost.current);
     const onKey = (e: KeyboardEvent) => {
+      if ((e.key === 'm' || e.key === 'M') && game.ui.mode.kind === 'select' && game.ui.selected !== null) {
+        game.startMove(game.ui.selected);
+        return;
+      }
       if (e.key === 'Escape') {
         if (game.ui.mode.kind !== 'select') game.setMode({ kind: 'select' });
         else if (game.ui.panel !== 'none') game.openPanel('none');

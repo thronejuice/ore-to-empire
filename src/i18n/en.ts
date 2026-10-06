@@ -428,6 +428,12 @@ export const en = {
   'err.signInFailed': 'Sign-in failed — try again',
   'err.paymentFailed': 'Payment failed.',
   'err.alreadyBought': 'You already bought the starter pack',
+
+  'ui.move': 'Move',
+  'ui.moveTip': 'Move this building (M). Belts follow it.',
+  'ui.moveHint': 'Tap the new spot for the {name}',
+  'err.cantReroute': 'Belts can\'t reach that spot',
+  'err.samePlace': 'It\'s already here',
 };
 
 export type Dict = Record<keyof typeof en, string>;

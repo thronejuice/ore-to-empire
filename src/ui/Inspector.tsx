@@ -217,6 +217,9 @@ export function Inspector() {
             ⇢ {t('ui.link')}
           </button>
         )}
+        <button className="btn" onClick={() => game.startMove(b.id)} title={t('ui.moveTip')}>
+          ✥ {t('ui.move')}
+        </button>
         {isUpgradable(b) && (
           <button className="btn" disabled={!canUp || s.money < nextCost} onClick={() => game.upgrade(b.id)}>
             {canUp ? (

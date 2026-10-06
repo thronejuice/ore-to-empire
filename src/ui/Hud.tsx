@@ -169,6 +169,9 @@ export function BottomBar() {
           ? t('ui.placeMinerHint')
           : t('ui.placeHint', { name: t(`b.${mode.type}`) });
       hint += ` · ${fmtMoney(BUILDINGS[mode.type].cost)}`;
+    } else if (mode.kind === 'move') {
+      const mb = game.state.buildings.find((x) => x.id === mode.id);
+      hint = t('ui.moveHint', { name: mb ? t(`b.${mb.type}`) : '' });
     } else {
       hint = mode.from === null ? t('ui.linkPickSource') : t('ui.linkPickTarget');
       const p = game.ui.linkPreview;
