@@ -77,15 +77,20 @@ Deno.serve(async (req) => {
     email = u.data.user?.email ?? undefined;
   }
   if (!email) {
-    email = (claims.email as string | undefined)?.toLowerCase() ?? `${lineSub.toLowerCase()}@${PLACEHOLDER_DOMAIN}`;
+    // Always use a placeholder derived from the LINE subject — never claims.email.
+    // LINE does not guarantee the email claim is verified, so using it to match an
+    // existing Supabase account would allow account takeover: an attacker could set
+    // the victim's email on their LINE profile and silently inherit that account.
+    // Linking a real email happens only through the authenticated path (step 3a above).
+    email = `${lineSub.toLowerCase()}@${PLACEHOLDER_DOMAIN}`;
     const created = await db.auth.admin.createUser({
       email,
       email_confirm: true,
       user_metadata: { full_name: claims.name ?? 'LINE user', avatar_url: claims.picture ?? null, provider: 'line' },
       app_metadata: { line_sub: lineSub },
     });
-    // "already registered" is fine — the magic link below signs into the existing account
-    if (created.error && !/already|exists|registered/i.test(created.error.message)) {
+    if (created.error) {
+      // lineSub is unique per LINE channel, so placeholder collision cannot happen.
       return json({ error: 'create_user_failed', detail: created.error.message }, 500);
     }
   }
