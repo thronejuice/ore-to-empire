@@ -430,7 +430,7 @@ export const en = {
   'err.alreadyBought': 'You already bought the starter pack',
 
   'ui.move': 'Move',
-  'ui.moveTip': 'Move this building (M). Belts follow it.',
+  'ui.moveTip': 'Move this building (M). Belts follow it. Free for 1 minute after building, then 10% of its value.',
   'ui.moveHint': 'Tap the new spot for the {name}',
   'err.cantReroute': 'Belts can\'t reach that spot',
   'err.samePlace': 'It\'s already here',
@@ -449,6 +449,12 @@ export const en = {
   'ui.veinLow': 'Your rich {ore} vein is running low',
   'ui.veinDepleted': 'The rich {ore} vein is mined out — the tile is a normal deposit again',
   'ui.veinExpired': 'A rich {ore} vein faded away',
+
+  'ui.moveFree': 'free {time}',
+  'ui.free': 'free',
+  'ui.effectMove': '−{pct}% moving fees',
+  'r.r_logistics.t': 'Plant Logistics',
+  'r.r_logistics.d': 'Cheaper to move machines around the factory.',
 };
 
 export type Dict = Record<keyof typeof en, string>;

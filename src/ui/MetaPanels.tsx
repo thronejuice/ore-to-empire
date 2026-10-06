@@ -72,6 +72,7 @@ export function ResearchPanel() {
                 if (def.powerSave) effects.push(t('ui.effectPower', { pct: Math.round(def.powerSave * 100) }));
                 if (def.beltMax) effects.push(t('ui.effectBelt', { n: def.beltMax }));
                 if (def.capacity) effects.push(t('ui.effectCapacity', { pct: Math.round(def.capacity * 100) }));
+                if (def.moveDiscount) effects.push(t('ui.effectMove', { pct: Math.round(def.moveDiscount * 100) }));
                 const missing = def.requires.filter((r) => !s.research.done.includes(r));
                 return (
                   <div key={id} className={`node ${st}`}>

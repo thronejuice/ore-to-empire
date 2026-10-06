@@ -14,9 +14,9 @@ import {
 import { globalSpeed, powerMult, recipeUnlocked } from '../core/economy';
 import { tileMult } from '../core/veins';
 import { OreInfo } from './TileSheet';
-import { isUpgradable, linkCarriesIn, totalInvested } from '../core/actions';
+import { freeMoveLeft, isUpgradable, linkCarriesIn, moveFee, totalInvested } from '../core/actions';
 import { getBuilding, invTotal } from '../core/state';
-import { fmtMoney, fmtNum } from '../i18n';
+import { fmtClock, fmtMoney, fmtNum } from '../i18n';
 import { useGame, useHighlight, useT } from './hooks';
 import { BuildingIcon, Inv, ItemIcon } from './icons';
 
@@ -37,6 +37,8 @@ export function Inspector() {
   const nextCost = upgradeCost(b.type, b.level);
   const canUp = isUpgradable(b) && b.level < BALANCE.maxBuildingLevel;
   const refund = Math.floor(totalInvested(b) * BALANCE.refundRate);
+  const mvFee = moveFee(s, b);
+  const freeLeft = freeMoveLeft(s, b);
   const statusClass = b.status === 'working' ? 'good' : b.status === 'output_full' || b.status === 'no_fuel' ? 'bad' : 'warn';
 
   let body: React.ReactNode = null;
@@ -226,8 +228,9 @@ export function Inspector() {
             ⇢ {t('ui.link')}
           </button>
         )}
-        <button className="btn" onClick={() => game.startMove(b.id)} title={t('ui.moveTip')}>
-          ✥ {t('ui.move')}
+        <button className="btn" disabled={s.money < mvFee} onClick={() => game.startMove(b.id)} title={t('ui.moveTip')}>
+          ✥ {t('ui.move')}{' '}
+          {freeLeft > 0 ? <span className="mono good">{t('ui.moveFree', { time: fmtClock(freeLeft) })}</span> : <span className="mono">{fmtMoney(mvFee)}</span>}
         </button>
         {isUpgradable(b) && (
           <button className="btn" disabled={!canUp || s.money < nextCost} onClick={() => game.upgrade(b.id)}>

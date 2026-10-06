@@ -1,6 +1,8 @@
 import {
   BALANCE,
   BUILDINGS,
+  MOVE,
+  RESEARCH,
   ITEMS,
   RECIPES,
   beltUpgradeCost,
@@ -67,6 +69,8 @@ export function moveBuilding(state: GameState, id: number, x: number, y: number)
   if (b.x === x && b.y === y) return fail('err.samePlace');
   const check = canPlace(state, b.type, x, y, b);
   if (!check.ok) return check;
+  const fee = moveFee(state, b);
+  if (state.money < fee) return fail('err.noMoney');
 
   const own = state.belts.filter((belt) => belt.from === id || belt.to === id);
   const oldPos = { x: b.x, y: b.y };
@@ -100,7 +104,7 @@ export function moveBuilding(state: GameState, id: number, x: number, y: number)
     state.belts.push(nb); // later belts see this one (they may bridge over it)
     newTiles += Math.max(1, path.length);
   }
-  const cost = Math.max(0, newTiles - oldTiles) * BALANCE.beltCostPerTile;
+  const cost = fee + Math.max(0, newTiles - oldTiles) * BALANCE.beltCostPerTile;
   if (state.money < cost) {
     state.belts = state.belts.filter((x2) => !rerouted.includes(x2));
     state.belts.push(...own);
@@ -137,6 +141,22 @@ export function removeBuilding(state: GameState, id: number): ActionResult<numbe
   state.buildings = state.buildings.filter((x) => x.id !== id);
   state.money += refund;
   return ok(refund);
+}
+
+/** seconds left in the free-move window after building, or 0 */
+export function freeMoveLeft(state: GameState, b: Building): number {
+  if (b.placedAt === undefined) return 0;
+  return Math.max(0, MOVE.freeSeconds - (state.time - b.placedAt));
+}
+
+/** fee for moving a building (belt tiles beyond the old lengths are extra) */
+export function moveFee(state: GameState, b: Building): number {
+  if (freeMoveLeft(state, b) > 0) return 0;
+  let discount = 0;
+  for (const id of state.research.done) discount += RESEARCH[id].moveDiscount ?? 0;
+  const mult = Math.max(0, 1 - discount);
+  const base = b.type === 'hq' ? MOVE.hqFee : Math.max(MOVE.min, totalInvested(b) * MOVE.rate);
+  return Math.round(base * mult);
 }
 
 export function totalInvested(b: Building): number {

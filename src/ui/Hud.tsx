@@ -2,6 +2,7 @@ import { BUILDINGS } from '../config/balance';
 import { QUESTS, currentQuest, currentQuestIndex } from '../core/quests';
 import { incomePerMinute } from '../core/sim';
 import { boostActive } from '../core/economy';
+import { moveFee } from '../core/actions';
 import { fmtClock, fmtMoney, fmtNum } from '../i18n';
 import { GemIcon, NAV, NavIcon } from './nav';
 import { useGame, useHighlight, useT } from './hooks';
@@ -177,6 +178,10 @@ export function BottomBar() {
     } else if (mode.kind === 'move') {
       const mb = game.state.buildings.find((x) => x.id === mode.id);
       hint = t('ui.moveHint', { name: mb ? t(`b.${mb.type}`) : '' });
+      if (mb) {
+        const fee = moveFee(game.state, mb);
+        hint += ` · ${fee > 0 ? fmtMoney(fee) : t('ui.free')}`;
+      }
     } else {
       hint = mode.from === null ? t('ui.linkPickSource') : t('ui.linkPickTarget');
       const p = game.ui.linkPreview;

@@ -256,6 +256,7 @@ export function makeBuilding(state: GameState, type: BuildingType, x: number, y:
     burn: 0,
     status: 'idle',
     rr: 0,
+    placedAt: state.time,
   };
 }
 

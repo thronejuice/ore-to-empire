@@ -220,6 +220,7 @@ export type ResearchId =
   | 'r_belts_2'
   | 'r_rail'
   | 'r_efficiency_1'
+  | 'r_logistics'
   | 'r_battery'
   | 'r_engine'
   | 'r_containers'
@@ -246,6 +247,7 @@ export interface ResearchDef {
   powerSave?: number; // −x power use
   beltMax?: number; // new max belt level
   capacity?: number; // +x vehicle capacity
+  moveDiscount?: number; // −x moving fees
 }
 
 const r = (id: ResearchId, tier: number, cost: number, time: number, requires: ResearchId[], extra: Partial<ResearchDef> = {}): ResearchDef => ({
@@ -269,6 +271,7 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
   r_belts_2: r('r_belts_2', 1, 10000, 180, ['r_automation_1'], { beltMax: 5 }),
   r_rail: r('r_rail', 1, 25000, 300, ['r_trucks']),
   r_efficiency_1: r('r_efficiency_1', 1, 15000, 240, ['r_automation_1'], { powerSave: 0.15 }),
+  r_logistics: r('r_logistics', 1, 12000, 180, ['r_automation_1'], { moveDiscount: 0.5 }),
 
   r_battery: r('r_battery', 2, 40000, 480, ['r_fabricator', 'r_solar']),
   r_engine: r('r_engine', 2, 50000, 480, ['r_fabricator']),
@@ -490,4 +493,15 @@ export const VEINS = {
   unclaimedTtl: 1200, // a vein no drill touches disappears after 20 min
   lowFraction: 0.25, // "running low" warning
   amount: { iron_ore: 1500, copper_ore: 1200, coal: 1000, sand: 1000, uranium_ore: 300 } as Record<DepositId, number>,
+};
+
+// =============================================================================
+// Moving buildings
+// =============================================================================
+
+export const MOVE = {
+  rate: 0.1, // fee = 10 % of what the building is worth (build + upgrades)
+  min: 10,
+  hqFee: 1000, // the HQ costs nothing to build, so it has a flat fee
+  freeSeconds: 60, // moving right after building is free (fixing a misplacement)
 };

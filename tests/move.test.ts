@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
-import { BALANCE, type DepositId } from '../src/config/balance';
-import { createLink, moveBuilding, placeBuilding, upgradeBuilding } from '../src/core/actions';
+import { BALANCE, MOVE, type DepositId } from '../src/config/balance';
+import { createLink, freeMoveLeft, moveBuilding, moveFee, placeBuilding, totalInvested, upgradeBuilding } from '../src/core/actions';
 import { tick } from '../src/core/sim';
 import { buildingAt, idx, newGame } from '../src/core/state';
 import type { GameState } from '../src/core/types';
@@ -133,5 +133,68 @@ describe('moving buildings', () => {
     expect(moveBuilding(s, h.id, 9, 20).ok || moveBuilding(s, h.id, 20, 9).ok).toBe(true);
     run(s, 40);
     expect(s.stats.sold.iron_bar ?? 0).toBeGreaterThan(0);
+  });
+});
+
+describe('moving fees', () => {
+  // chain() runs 30 s, so its buildings are still inside the free window
+  const pastFreeWindow = (s: GameState) => run(s, MOVE.freeSeconds);
+
+  it('is free right after building', () => {
+    const { s, furnace } = chain();
+    expect(freeMoveLeft(s, furnace)).toBeGreaterThan(0);
+    expect(moveFee(s, furnace)).toBe(0);
+    const money = s.money;
+    const [nx, ny] = emptyTile(s, [furnace.x + 2, furnace.y]);
+    const r = moveBuilding(s, furnace.id, nx, ny);
+    if (!r.ok) throw new Error(r.reason);
+    expect(s.money).toBeCloseTo(money - r.value.cost, 5);
+    expect(r.value.cost).toBeLessThan(30); // no fee: only a few extra belt tiles, if any
+  });
+
+  it('then costs 10% of build + upgrades, and is charged', () => {
+    const { s, furnace } = chain();
+    pastFreeWindow(s);
+    // furnace Lv 3: 100 + 180 + 324 = 604 → $60
+    expect(totalInvested(furnace)).toBe(604);
+    expect(moveFee(s, furnace)).toBe(60);
+    const money = s.money;
+    const [nx, ny] = emptyTile(s, [furnace.x + 2, furnace.y]);
+    const r = moveBuilding(s, furnace.id, nx, ny);
+    if (!r.ok) throw new Error(r.reason);
+    expect(r.value.cost).toBeGreaterThanOrEqual(60);
+    expect(money - s.money).toBeCloseTo(r.value.cost, 0); // the sim may sell something meanwhile; within $1
+  });
+
+  it('has a $10 minimum and a flat HQ fee', () => {
+    const { s, miner } = chain();
+    pastFreeWindow(s);
+    expect(moveFee(s, miner)).toBe(MOVE.min); // 10 % of $40 = $4 → $10
+    expect(moveFee(s, hq(s))).toBe(MOVE.hqFee);
+  });
+
+  it('research halves the fee', () => {
+    const { s, furnace } = chain();
+    pastFreeWindow(s);
+    s.research.done.push('r_logistics');
+    expect(moveFee(s, furnace)).toBe(30);
+    expect(moveFee(s, hq(s))).toBe(MOVE.hqFee / 2);
+  });
+
+  it('refuses without enough money and changes nothing', () => {
+    const { s, furnace } = chain();
+    pastFreeWindow(s);
+    s.money = 10;
+    const pos = [furnace.x, furnace.y];
+    const [nx, ny] = emptyTile(s, [furnace.x + 2, furnace.y]);
+    expect(moveBuilding(s, furnace.id, nx, ny)).toEqual({ ok: false, reason: 'err.noMoney' });
+    expect([furnace.x, furnace.y]).toEqual(pos);
+    expect(s.money).toBe(10);
+  });
+
+  it('old saves (no build time) pay the normal fee', () => {
+    const { s, furnace } = chain();
+    delete furnace.placedAt;
+    expect(moveFee(s, furnace)).toBe(60);
   });
 });

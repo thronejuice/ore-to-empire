@@ -25,6 +25,8 @@ export interface Building {
   recv?: number;
   status: BuildingStatus;
   rr: number;
+  /** game time when built (moves are free for a short while after) */
+  placedAt?: number;
 }
 
 export interface BeltItem {
