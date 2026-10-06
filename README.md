@@ -27,6 +27,7 @@ To turn on accounts, cloud saves and the gem store, follow **[docs/SETUP-PHASE4.
 - **Research:** 23 timed projects in 5 tiers (keeps running offline).
 - **Meta:** tutorial + guided quests, contracts, 3 daily missions (gems), prestige ("sell the company" for shares and perks), gem items (time skip, income ×2, offline cap).
 - **Offline progress:** up to 8 h (more with perks/gems); server clock for signed-in players.
+- **Accounts (v1.0.0):** pick a unique player name before playing; the server creates the account with a random password kept on the device (no login next time) and a one-time recovery code for new devices. Email, Google and LINE can be linked as backups.
 
 ## Project layout
 
@@ -48,7 +49,7 @@ src/
   i18n/                 Thai + English
 supabase/
   migrations/           schema, RLS, gem/save functions
-  functions/            create-charge, omise-webhook, line-auth (Deno)
+  functions/            player-account, create-charge, omise-webhook, line-auth (Deno)
 public/line-callback.html
 tests/                  vitest simulation tests
 docs/SETUP-PHASE4.md    online setup guide (Thai)

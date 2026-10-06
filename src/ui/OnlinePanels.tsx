@@ -2,7 +2,10 @@ import { useState } from 'react';
 import { PACKS, PACK_ORDER } from '../config/meta';
 import { fmtMoney } from '../i18n';
 import { lineConfigured, paymentsConfigured } from '../online/config';
+import { maskCode } from '../core/player';
+import { accountErrorKey } from '../online/errors';
 import type { Online, SaveSummary } from '../online/online';
+import { CopyButton } from './Onboarding';
 import { useGame, useT } from './hooks';
 import { GemIcon } from './nav';
 import { Modal } from './Panels';
@@ -20,6 +23,10 @@ export function AccountPanel() {
   const online = useOnline();
   const [email, setEmail] = useState('');
   const [error, setError] = useState<string | null>(null);
+  const [reveal, setReveal] = useState(false);
+  const [confirmOut, setConfirmOut] = useState(false);
+  const [confirmCode, setConfirmCode] = useState(false);
+  const [linkEmail, setLinkEmail] = useState('');
   if (game.ui.panel !== 'account') return null;
   const user = online?.ui.user;
 
@@ -29,8 +36,8 @@ export function AccountPanel() {
       {online && user && (
         <>
           <div className="kv">
-            <span>{t('ui.signedInAs')}</span>
-            <strong>{user.name || user.email}</strong>
+            <span>{t('acct.player')}</span>
+            <strong data-testid="player-name">{online.ui.username ?? user.name ?? user.email}</strong>
             <span>{t('ui.gems')}</span>
             <span className="mono">
               <GemIcon /> {game.state.gems}
@@ -40,10 +47,81 @@ export function AccountPanel() {
               {online.ui.lastCloudSave ? t('ui.savedAt', { time: new Date(online.ui.lastCloudSave).toLocaleTimeString() }) : t('ui.notYet')}
             </span>
           </div>
-          <p className="small dim">{t('ui.cloudHint')}</p>
-          <button className="btn ghost full" onClick={() => void online.signOut()}>
-            {t('ui.signOut')}
-          </button>
+          <p className="small dim">{t('acct.cloudHint')}</p>
+
+          <div className="acct-section">
+            <div className="section-label">{t('acct.recoveryCode')}</div>
+            {online.deviceCode() ? (
+              <div className="acct-code">
+                <span className="mono">{reveal ? online.deviceCode() : maskCode(online.deviceCode()!)}</span>
+                <button className="btn small ghost" onClick={() => setReveal(!reveal)}>
+                  {reveal ? t('acct.hide') : t('acct.show')}
+                </button>
+                <CopyButton text={online.deviceCode()!} />
+              </div>
+            ) : (
+              <p className="small dim">{t('acct.noCodeHere')}</p>
+            )}
+            <button
+              className={`btn small ${confirmCode ? 'danger armed' : 'ghost'}`}
+              onClick={async () => {
+                if (!confirmCode) return setConfirmCode(true);
+                setConfirmCode(false);
+                const err = await online.newRecoveryCode();
+                if (err) setError(accountErrorKey(err));
+                else game.openPanel('none');
+              }}
+            >
+              {confirmCode ? t('acct.newCodeConfirm') : t('acct.newCode')}
+            </button>
+          </div>
+
+          <div className="acct-section">
+            <div className="section-label">{t('acct.backup')}</div>
+            <p className="small dim">{t('acct.backupWhy')}</p>
+            {user.email ? (
+              <p className="small">
+                {t('ui.email')}: <strong>{user.email}</strong>
+              </p>
+            ) : online.ui.linkSentTo ? (
+              <p className="good small">{t('acct.linkSent', { email: online.ui.linkSentTo })}</p>
+            ) : (
+              <form
+                className="email-form"
+                onSubmit={async (e) => {
+                  e.preventDefault();
+                  const err = await online.linkEmail(linkEmail.trim());
+                  if (err) setError(err);
+                }}
+              >
+                <div className="row">
+                  <input type="email" required autoComplete="email" value={linkEmail} onChange={(e) => setLinkEmail(e.target.value)} placeholder="you@example.com" aria-label={t('ui.email')} />
+                  <button className="btn" type="submit">
+                    {t('acct.addEmail')}
+                  </button>
+                </div>
+              </form>
+            )}
+            {online.linkedProviders().includes('google') ? (
+              <p className="small good">✓ Google</p>
+            ) : (
+              <button className="btn full social google" onClick={() => void online.linkGoogle()}>
+                <span className="g">G</span> {t('acct.linkGoogle')}
+              </button>
+            )}
+            {lineConfigured && (
+              <button className="btn full social line" onClick={() => online.signInLine('link')}>
+                <span className="l">LINE</span> {t('acct.linkLine')}
+              </button>
+            )}
+            {error && <p className="bad small">{t(error)}</p>}
+          </div>
+
+          <div className="acct-section">
+            <button className={`btn full ${confirmOut ? 'danger armed' : 'ghost'}`} onClick={() => (confirmOut ? void online.signOut() : setConfirmOut(true))}>
+              {confirmOut ? t('acct.signOutConfirm') : t('ui.signOut')}
+            </button>
+          </div>
         </>
       )}
       {online && !user && (
@@ -82,6 +160,9 @@ export function AccountPanel() {
               <span className="l">LINE</span> {t('ui.withLine')}
             </button>
           )}
+          <button className="btn ghost full" onClick={() => online.showOnboarding('recover')}>
+            {t('acct.haveAccount')}
+          </button>
           <p className="small dim">{t('ui.guestNote')}</p>
         </>
       )}

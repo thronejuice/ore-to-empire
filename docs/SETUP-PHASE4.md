@@ -53,6 +53,12 @@ supabase db push                               # สร้างตาราง�
 
 **อีเมล (magic link):** เปิดไว้ตั้งแต่ต้น แนะนำให้ตั้ง SMTP ของตัวเองใน Authentication → Emails เพราะ SMTP ฟรีของ Supabase ส่งได้จำนวนจำกัดต่อชั่วโมง
 
+**ชื่อผู้เล่น + รหัสบนเครื่อง (v1.0.0, วิธีหลัก)**
+- Providers → **Email** ต้องเปิดอยู่ (ระบบใช้ล็อกอินแบบอีเมล+รหัสผ่านเบื้องหลัง ผู้เล่นไม่เห็น)
+- Authentication → Settings: เปิด **Allow manual linking** (ให้ผู้เล่นผูก Google เพิ่มเข้าบัญชีเดิมได้)
+- Authentication → Emails / Settings: ปิด **Secure email change** เพื่อให้ผู้เล่นเพิ่มอีเมลจริงแทนอีเมลภายในได้ โดยยืนยันที่อีเมลใหม่อย่างเดียว
+- บัญชีที่สร้างจากชื่อผู้เล่นใช้อีเมลภายใน `p-<uuid>@players.ore-to-empire.local` ซึ่งไม่มีการส่งเมลจริง ถ้า Supabase ไม่รับโดเมนนี้ ให้ตั้ง secret `PLAYER_EMAIL_DOMAIN` เป็นซับโดเมนของคุณเอง เช่น `players.<โดเมนของเกม>`
+
 **Google**
 1. Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID (Web application)
 2. Authorized redirect URI: `https://<PROJECT_REF>.supabase.co/auth/v1/callback`
@@ -99,11 +105,27 @@ supabase secrets set \
 supabase functions deploy create-charge
 supabase functions deploy omise-webhook --no-verify-jwt
 supabase functions deploy line-auth --no-verify-jwt
+supabase functions deploy player-account --no-verify-jwt
 ```
+
+ตัวเลือกเพิ่มเติมของ `player-account` (ไม่ตั้งก็ได้):
+- `PLAYER_EMAIL_DOMAIN` — โดเมนของอีเมลภายใน (ดูข้อ 2)
+- `TURNSTILE_SECRET` — เปิดการตรวจบอทของ Cloudflare Turnstile ตอนสร้างบัญชี ต้องใส่ `VITE_TURNSTILE_SITE_KEY` ใน `.env` คู่กันด้วย
 
 `SUPABASE_URL`, `SUPABASE_ANON_KEY` และ `SUPABASE_SERVICE_ROLE_KEY` มีให้ใน edge functions อัตโนมัติ ไม่ต้องตั้งเอง
 
-`omise-webhook` และ `line-auth` ต้องใช้ `--no-verify-jwt` เพราะ Omise และหน้า callback ของ LINE ไม่มี token ของ Supabase ส่วนความปลอดภัย webhook ดึง charge จาก Omise ใหม่ทุกครั้ง และ `line-auth` ตรวจ ID token กับ LINE ทุกครั้ง
+`omise-webhook`, `line-auth` และ `player-account` ต้องใช้ `--no-verify-jwt` เพราะ Omise และหน้า callback ของ LINE ไม่มี token ของ Supabase ส่วนความปลอดภัย webhook ดึง charge จาก Omise ใหม่ทุกครั้ง และ `line-auth` ตรวจ ID token กับ LINE ทุกครั้ง
+
+### ระบบบัญชีแบบชื่อผู้เล่น ทำงานอย่างไร (v1.0.0)
+
+1. เปิดเกมครั้งแรก ผู้เล่นตั้งชื่อ (ห้ามซ้ำ ตรวจทันทีขณะพิมพ์) ก่อนเริ่มเล่น
+2. `player-account` สร้างผู้ใช้ใน Supabase พร้อม**รหัสผ่านสุ่มยาว** และ**รหัสกู้คืน** `ORE-XXXX-XXXX-XXXX-XXXX`
+3. รหัสผ่านเก็บในเครื่องผู้เล่น (`localStorage`) เปิดเกมครั้งต่อไปเข้าสู่ระบบเองโดยไม่ต้องทำอะไร
+4. รหัสกู้คืนแสดงครั้งเดียว ฐานข้อมูลเก็บเฉพาะค่า hash แบบ bcrypt
+5. เปลี่ยนเครื่อง: กด "มีบัญชีอยู่แล้ว" ใส่ชื่อ + รหัสกู้คืน ระบบออกรหัสผ่านใหม่ให้เครื่องนั้น (เครื่องเก่าจะถูกออกจากระบบ) หรือเข้าด้วยอีเมล/Google/LINE ที่ผูกไว้
+6. กันเดารหัส: ผิด 5 ครั้งล็อก 15 นาที · สร้างบัญชีได้ไม่เกิน 5 บัญชี/ชั่วโมง/IP
+
+ผู้เล่นเดิมที่เคยเข้าด้วยอีเมล/Google/LINE จะถูกขอให้ตั้งชื่อครั้งเดียวตอนเข้าเกม
 
 ---
 

@@ -3,14 +3,16 @@
 // POST { code, redirect_uri, nonce }
 // 1. Exchange the LINE authorization code for tokens.
 // 2. Verify the ID token with LINE (checks signature, audience, expiry and our nonce).
-// 3. Find or create the Supabase user for this LINE account.
+// 3. If the request is signed in, link this LINE account to that player and stop.
+//    Otherwise find the player linked to this LINE account (identity_links), or
+//    create a new user for it.
 // 4. Mint a one-time magic-link token; the browser exchanges it with
 //    supabase.auth.verifyOtp({ token_hash, type: 'magiclink' }) for a normal session.
 //
 // Deploy with:  supabase functions deploy line-auth --no-verify-jwt
 // Secrets: LINE_CHANNEL_ID, LINE_CHANNEL_SECRET, SITE_URL
 
-import { admin, cors, json } from '../_shared/util.ts';
+import { admin, cors, json, requestUser } from '../_shared/util.ts';
 
 const CHANNEL_ID = Deno.env.get('LINE_CHANNEL_ID') ?? '';
 const CHANNEL_SECRET = Deno.env.get('LINE_CHANNEL_SECRET') ?? '';
@@ -53,23 +55,46 @@ Deno.serve(async (req) => {
   if (!verifyRes.ok || !claims.sub) return json({ error: 'line_verify_failed', detail: claims.error_description ?? claims.error }, 400);
 
   const lineSub: string = claims.sub;
-  const email: string = (claims.email as string | undefined)?.toLowerCase() ?? `${lineSub.toLowerCase()}@${PLACEHOLDER_DOMAIN}`;
-
-  // 3. find or create the user
   const db = admin();
-  const created = await db.auth.admin.createUser({
-    email,
-    email_confirm: true,
-    user_metadata: { full_name: claims.name ?? 'LINE user', avatar_url: claims.picture ?? null, provider: 'line' },
-    app_metadata: { line_sub: lineSub },
-  });
-  // "already registered" is fine — the magic link below signs into the existing account
-  if (created.error && !/already|exists|registered/i.test(created.error.message)) {
-    return json({ error: 'create_user_failed', detail: created.error.message }, 500);
+
+  // 3a. linking LINE to the signed-in player (account panel → "link LINE")
+  const current = await requestUser(req);
+  if (current) {
+    const { data: existing } = await db.from('identity_links').select('user_id').eq('provider', 'line').eq('subject', lineSub).maybeSingle();
+    if (existing && existing.user_id !== current.id) return json({ error: 'line_in_use' }, 409);
+    if (!existing) {
+      const ins = await db.from('identity_links').insert({ provider: 'line', subject: lineSub, user_id: current.id });
+      if (ins.error) return json({ error: 'link_failed', detail: ins.error.message }, 500);
+    }
+    return json({ linked: true });
+  }
+
+  // 3b. signing in with LINE: a linked player first
+  let email: string | undefined;
+  const { data: linked } = await db.from('identity_links').select('user_id').eq('provider', 'line').eq('subject', lineSub).maybeSingle();
+  if (linked) {
+    const u = await db.auth.admin.getUserById(linked.user_id);
+    email = u.data.user?.email ?? undefined;
+  }
+  if (!email) {
+    email = (claims.email as string | undefined)?.toLowerCase() ?? `${lineSub.toLowerCase()}@${PLACEHOLDER_DOMAIN}`;
+    const created = await db.auth.admin.createUser({
+      email,
+      email_confirm: true,
+      user_metadata: { full_name: claims.name ?? 'LINE user', avatar_url: claims.picture ?? null, provider: 'line' },
+      app_metadata: { line_sub: lineSub },
+    });
+    // "already registered" is fine — the magic link below signs into the existing account
+    if (created.error && !/already|exists|registered/i.test(created.error.message)) {
+      return json({ error: 'create_user_failed', detail: created.error.message }, 500);
+    }
   }
 
   // 4. one-time token for the browser
   const link = await db.auth.admin.generateLink({ type: 'magiclink', email });
   if (link.error || !link.data.properties?.hashed_token) return json({ error: 'link_failed', detail: link.error?.message }, 500);
+  if (!linked && link.data.user) {
+    await db.from('identity_links').upsert({ provider: 'line', subject: lineSub, user_id: link.data.user.id }, { onConflict: 'provider,subject', ignoreDuplicates: true });
+  }
   return json({ token_hash: link.data.properties.hashed_token });
 });

@@ -8,6 +8,7 @@ interface ImportMetaEnv {
   readonly VITE_SUPABASE_ANON_KEY?: string;
   readonly VITE_OMISE_PUBLIC_KEY?: string;
   readonly VITE_LINE_CHANNEL_ID?: string;
+  readonly VITE_TURNSTILE_SITE_KEY?: string;
 }
 
 interface ImportMeta {

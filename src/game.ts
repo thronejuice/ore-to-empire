@@ -733,6 +733,12 @@ export class Game {
     this.structureChanged();
   }
 
+  setPlayerName(name: string) {
+    this.state.player = { name };
+    this.save();
+    this.emit();
+  }
+
   setSound(on: boolean) {
     this.state.settings.sound = on;
     setSoundEnabled(on);
@@ -744,6 +750,7 @@ export class Game {
     this.store.clear();
     const fresh = newGame();
     fresh.settings = { ...this.state.settings };
+    fresh.player = this.state.player; // the name belongs to the player, not the factory
     this.ui = { ...this.ui, panel: 'none', offline: null };
     this.replaceState(fresh);
   }

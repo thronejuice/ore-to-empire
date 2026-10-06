@@ -145,6 +145,8 @@ export interface GameState {
   stats: Stats;
   quests: { done: string[]; tutorialSkipped: boolean };
   settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView };
+  /** the player's name (v1.0.0; older saves don't have one until the player picks it) */
+  player?: { name: string };
 
   // ---- Phase 2
   research: { done: ResearchId[]; active: { id: ResearchId; remaining: number } | null };

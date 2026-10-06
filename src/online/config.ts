@@ -8,16 +8,18 @@ export const ONLINE = {
   supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? '',
   omisePublicKey: import.meta.env.VITE_OMISE_PUBLIC_KEY ?? '',
   lineChannelId: import.meta.env.VITE_LINE_CHANNEL_ID ?? '',
+  turnstileSiteKey: import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '',
 };
 
 export const onlineConfigured = !!(ONLINE.supabaseUrl && ONLINE.supabaseAnonKey);
 export const paymentsConfigured = onlineConfigured && !!ONLINE.omisePublicKey;
 export const lineConfigured = onlineConfigured && !!ONLINE.lineChannelId;
 
-/** is there a stored Supabase session? (sync check so the game can wait for server time) */
+/** is there a stored Supabase session or device key? (sync check so the game can wait for server time) */
 export function hasStoredSession(): boolean {
   if (!onlineConfigured) return false;
   try {
+    if (localStorage.getItem('ore-to-empire/device-login')?.includes('"password"')) return true;
     for (let i = 0; i < localStorage.length; i++) {
       const k = localStorage.key(i) ?? '';
       if (k.startsWith('sb-') && k.endsWith('-auth-token')) return true;

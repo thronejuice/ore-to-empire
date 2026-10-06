@@ -3,7 +3,9 @@ import { PACKS, type GemItemId, type PackId } from '../config/meta';
 import { migrate } from '../core/save';
 import type { GameState } from '../core/types';
 import type { Game, OnlineBridge } from '../game';
+import { normaliseCode } from '../core/player';
 import { ONLINE, lineConfigured, siteUrl } from './config';
+import { clearDevice, loadDevice, saveDevice, type DeviceLogin } from './device';
 import { openOmiseCard } from './omise';
 
 export interface SaveSummary {
@@ -21,6 +23,29 @@ export interface OnlineUi {
   emailSentTo: string | null;
   conflict: { local: SaveSummary; cloud: SaveSummary } | null;
   payment: { purchaseId: string; pack: PackId; qr: string | null; status: 'pending' | 'paid' | 'failed' | 'expired'; failure?: string } | null;
+  /** the player's unique name (null until picked) */
+  username: string | null;
+  /**
+   * The step shown before play:
+   *  name     — pick a name (creates the account)
+   *  code     — show the new recovery code once
+   *  recover  — "I already have an account": name + recovery code, or email/Google/LINE
+   *  set-name — signed in some other way, but no name yet
+   */
+  onboarding: null | 'name' | 'code' | 'recover' | 'set-name';
+  /** i18n key explaining why the onboarding step is showing */
+  onboardingNote: string | null;
+  /** name to pre-fill in the recover form */
+  recoverName: string;
+  /** a recovery code to show (once after creating, or after asking for a new one) */
+  newCode: string | null;
+  /** "confirm your email" link sent while adding an email to the account */
+  linkSentTo: string | null;
+}
+
+/** does this account still use the generated login only (no real email)? */
+function isDeviceEmail(email: string | undefined): boolean {
+  return !!email && /^p-[0-9a-f-]{36}@/.test(email);
 }
 
 const ERRORS: Record<string, string> = {
@@ -54,7 +79,20 @@ const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b
  * gems and Omise purchases. Created only when the env vars are configured.
  */
 export class Online implements OnlineBridge {
-  ui: OnlineUi = { user: null, ready: false, lastCloudSave: null, emailSentTo: null, conflict: null, payment: null };
+  ui: OnlineUi = {
+    user: null,
+    ready: false,
+    lastCloudSave: null,
+    emailSentTo: null,
+    conflict: null,
+    payment: null,
+    username: null,
+    onboarding: null,
+    onboardingNote: null,
+    recoverName: '',
+    newCode: null,
+    linkSentTo: null,
+  };
   private user: User | null = null;
   private saving = false;
   private pendingCloud: { state: GameState; serverNow: number; savedAt: number } | null = null;
@@ -89,7 +127,7 @@ export class Online implements OnlineBridge {
     this.ui.user = u
       ? {
           id: u.id,
-          email: u.email ?? '',
+          email: isDeviceEmail(u.email) ? '' : (u.email ?? ''),
           name: (u.user_metadata?.full_name as string) ?? (u.user_metadata?.name as string) ?? u.email ?? '',
           provider: (u.user_metadata?.provider as string) ?? (u.app_metadata?.provider as string) ?? 'email',
         }
@@ -107,12 +145,22 @@ export class Online implements OnlineBridge {
       const u = session?.user ?? null;
       const changedUser = (u?.id ?? null) !== (this.user?.id ?? null);
       this.setUser(u);
-      if (changedUser && u) void this.afterSignIn();
+      // outside the callback: supabase-js holds a lock while notifying
+      if (changedUser && u) window.setTimeout(() => void this.afterSignIn(), 0);
       this.changed();
     });
 
     if (this.user) await this.afterSignIn();
-    else this.game.applyDeferredCatchUp();
+    else {
+      const device = loadDevice();
+      if (device?.email && device.password) {
+        await this.deviceSignIn(device); // signed in → afterSignIn runs from the auth event
+      } else {
+        this.game.applyDeferredCatchUp();
+        if (device?.pending) void this.createPending(device);
+        else this.showOnboarding('name');
+      }
+    }
 
     this.resumePaymentFromUrl();
     window.setInterval(() => void this.cloudSave(), 30_000);
@@ -128,7 +176,7 @@ export class Online implements OnlineBridge {
    * offline progress (a player can't fast-forward by changing the device clock).
    */
   private async afterSignIn() {
-    await this.refreshProfile();
+    await this.refreshProfile(true);
     const { data, error } = await this.sb.rpc('load_game');
     if (error) {
       this.game.applyDeferredCatchUp();
@@ -171,6 +219,7 @@ export class Online implements OnlineBridge {
 
   private useCloud(cloud: GameState, awaySeconds: number) {
     cloud.settings = { ...this.game.state.settings, ...cloud.settings };
+    if (this.ui.username) cloud.player = { name: this.ui.username };
     cloud.gems = this.game.state.gems; // server balance, already fetched
     cloud.boostUntil = Math.max(cloud.boostUntil, this.game.state.boostUntil);
     this.game.replaceState(cloud, awaySeconds);
@@ -190,12 +239,21 @@ export class Online implements OnlineBridge {
 
   // ------------------------------------------------------------------ profile, saves
 
-  async refreshProfile() {
+  async refreshProfile(checkName = false) {
     if (!this.user) return;
-    const { data } = await this.sb.from('profiles').select('gems, boost_until').eq('id', this.user.id).single();
+    const { data } = await this.sb.from('profiles').select('gems, boost_until, username').eq('id', this.user.id).single();
     if (data) {
       this.game.state.gems = data.gems;
       if (data.boost_until) this.game.state.boostUntil = Math.max(this.game.state.boostUntil, Date.parse(data.boost_until));
+      this.ui.username = data.username ?? null;
+      if (data.username) {
+        if (this.game.state.player?.name !== data.username) this.game.setPlayerName(data.username);
+        if (this.ui.onboarding === 'set-name' || this.ui.onboarding === 'name' || this.ui.onboarding === 'recover') this.showOnboarding(null);
+      } else if (checkName) {
+        // signed in with email / Google / LINE before names existed (or before picking one)
+        this.ui.recoverName = this.game.state.player?.name ?? '';
+        this.showOnboarding('set-name');
+      }
       this.changed();
     }
   }
@@ -216,6 +274,153 @@ export class Online implements OnlineBridge {
     void this.cloudSave(true);
   }
 
+  // ------------------------------------------------------------------ player accounts (name + device key)
+
+  showOnboarding(step: OnlineUi['onboarding'], note: string | null = null) {
+    this.ui.onboarding = step;
+    this.ui.onboardingNote = note;
+    this.changed();
+  }
+
+  /** call an edge function; returns its JSON, or the error code from its body ('network' if none) */
+  private async fn<T>(name: string, body: Record<string, unknown>): Promise<{ data: T; error: null } | { data: null; error: string }> {
+    const { data, error } = await this.sb.functions.invoke(name, { body });
+    if (!error) return { data: data as T, error: null };
+    let code = 'network';
+    try {
+      const ctx = (error as { context?: Response }).context;
+      if (ctx && typeof ctx.json === 'function') code = ((await ctx.json()) as { error?: string })?.error ?? code;
+    } catch {
+      /* not JSON */
+    }
+    return { data: null, error: code };
+  }
+
+  /** true / false, or null when we can't tell (offline) */
+  async nameAvailable(name: string): Promise<boolean | null> {
+    const { data, error } = await this.sb.rpc('username_available', { p_name: name.trim() });
+    return error ? null : !!data;
+  }
+
+  /**
+   * Creates the player's account: the server generates a password (kept on this
+   * device) and a recovery code (shown once). Returns an error code or null.
+   */
+  async createAccount(rawName: string, captcha?: string): Promise<string | null> {
+    const name = rawName.trim();
+    const r = await this.fn<{ email: string; password: string; code: string }>('player-account', { action: 'create', name, captcha });
+    if (r.error !== null) return r.error;
+    const { email, password, code } = r.data;
+    saveDevice({ name, email, password, code });
+    this.game.setPlayerName(name);
+    this.ui.username = name;
+    this.ui.newCode = code;
+    this.showOnboarding('code');
+    const { error } = await this.sb.auth.signInWithPassword({ email, password });
+    if (error) this.game.toast(this.game.t('err.network'), 'error'); // the key is saved: next start signs in
+    return null;
+  }
+
+  /** no connection when picking a name: play now, create the account later */
+  playOfflineAs(rawName: string) {
+    const name = rawName.trim();
+    saveDevice({ name, pending: true });
+    this.game.setPlayerName(name);
+    this.showOnboarding(null);
+  }
+
+  private async createPending(d: DeviceLogin) {
+    const err = await this.createAccount(d.name);
+    if (err === 'name_taken' || err === 'bad_name') {
+      this.ui.recoverName = d.name;
+      this.showOnboarding('name', 'acct.takenNow');
+    }
+    // other errors (still offline…): keep the pending name and try next time
+  }
+
+  private async deviceSignIn(d: DeviceLogin) {
+    const { error } = await this.sb.auth.signInWithPassword({ email: d.email!, password: d.password! });
+    if (!error) return;
+    this.game.applyDeferredCatchUp();
+    if (error.status === 400) {
+      // the key was replaced (account recovered on another device)
+      this.ui.recoverName = d.name;
+      this.showOnboarding('recover', 'acct.keyReplaced');
+    } else {
+      this.game.toast(this.game.t('err.network'), 'error');
+    }
+  }
+
+  /** restore an account on this device with its name + recovery code */
+  async recover(rawName: string, rawCode: string): Promise<string | null> {
+    const name = rawName.trim();
+    const code = normaliseCode(rawCode);
+    if (!code) return 'bad_code';
+    const r = await this.fn<{ email: string; password: string }>('player-account', { action: 'recover', name, code });
+    if (r.error !== null) return r.error;
+    saveDevice({ name, email: r.data.email, password: r.data.password, code });
+    const { error } = await this.sb.auth.signInWithPassword({ email: r.data.email, password: r.data.password });
+    if (error) return 'network';
+    this.showOnboarding(null);
+    return null;
+  }
+
+  /** name for an account that signed in with email / Google / LINE */
+  async setUsername(rawName: string): Promise<string | null> {
+    const name = rawName.trim();
+    const { error } = await this.sb.rpc('set_username', { p_name: name });
+    if (error) {
+      for (const c of ['name_taken', 'bad_name', 'name_already_set']) if (error.message.includes(c)) return c;
+      return 'network';
+    }
+    this.ui.username = name;
+    this.game.setPlayerName(name);
+    this.showOnboarding(null);
+    await this.cloudSave(true);
+    return null;
+  }
+
+  /** replaces the recovery code (the old one stops working) */
+  async newRecoveryCode(): Promise<string | null> {
+    const r = await this.fn<{ code: string }>('player-account', { action: 'new-code' });
+    if (r.error !== null) return r.error;
+    const d = loadDevice();
+    if (d && d.name.toLowerCase() === (this.ui.username ?? '').toLowerCase()) saveDevice({ ...d, code: r.data.code });
+    this.ui.newCode = r.data.code;
+    this.showOnboarding('code');
+    return null;
+  }
+
+  /** recovery code kept on this device (for the signed-in player) */
+  deviceCode(): string | null {
+    const d = loadDevice();
+    return d?.code && d.name.toLowerCase() === (this.ui.username ?? '').toLowerCase() ? d.code : null;
+  }
+
+  savedCode() {
+    this.ui.newCode = null;
+    this.showOnboarding(null);
+  }
+
+  // backup sign-ins added to the current account
+
+  async linkEmail(email: string): Promise<string | null> {
+    const { error } = await this.sb.auth.updateUser({ email }, { emailRedirectTo: siteUrl() });
+    if (error) return error.message;
+    this.ui.linkSentTo = email;
+    this.changed();
+    return null;
+  }
+
+  async linkGoogle() {
+    const { error } = await this.sb.auth.linkIdentity({ provider: 'google', options: { redirectTo: siteUrl() } });
+    if (error) this.game.toast(this.game.t('err.signInFailed'), 'error');
+  }
+
+  linkedProviders(): string[] {
+    return (this.user?.identities ?? []).map((i) => i.provider).filter((p) => p !== 'email' || !!this.ui.user?.email);
+  }
+
   // ------------------------------------------------------------------ auth
 
   async signInEmail(email: string): Promise<string | null> {
@@ -230,9 +435,10 @@ export class Online implements OnlineBridge {
     await this.sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: siteUrl() } });
   }
 
-  signInLine() {
+  /** LINE sign-in, or (mode 'link') adding LINE to the signed-in account */
+  signInLine(mode: 'signin' | 'link' = 'signin') {
     if (!lineConfigured) return;
-    const state = 'line.' + randomId();
+    const state = `line.${mode}.` + randomId();
     const nonce = randomId();
     sessionStorage.setItem('ote.line_state', JSON.stringify({ state, nonce }));
     const redirect = new URL('line-callback.html', siteUrl()).href;
@@ -264,22 +470,32 @@ export class Online implements OnlineBridge {
       this.game.toast(this.game.t('err.signInFailed'), 'error');
       return;
     }
-    const { data, error } = await this.sb.functions.invoke('line-auth', {
-      body: { code: cb.code, redirect_uri: new URL('line-callback.html', siteUrl()).href, nonce: saved.nonce },
+    const r = await this.fn<{ token_hash?: string; linked?: boolean }>('line-auth', {
+      code: cb.code,
+      redirect_uri: new URL('line-callback.html', siteUrl()).href,
+      nonce: saved.nonce,
     });
-    if (error || !data?.token_hash) {
-      this.game.toast(this.game.t('err.signInFailed'), 'error');
+    if (r.data?.linked) {
+      this.game.toast(this.game.t('acct.lineLinked'), 'success');
       return;
     }
-    await this.sb.auth.verifyOtp({ token_hash: data.token_hash, type: 'magiclink' });
+    if (r.error !== null || !r.data.token_hash) {
+      this.game.toast(this.game.t(r.error === 'line_in_use' ? 'acct.err.line_in_use' : 'err.signInFailed'), 'error');
+      return;
+    }
+    const data = r.data;
+    await this.sb.auth.verifyOtp({ token_hash: data.token_hash!, type: 'magiclink' });
   }
 
+  /** signs out and forgets this device's key (the recovery code brings it back) */
   async signOut() {
     await this.cloudSave(true);
     await this.sb.auth.signOut();
+    clearDevice();
     this.setUser(null);
+    this.ui.username = null;
     this.game.state.gems = 0; // gems belong to the account
-    this.changed();
+    this.showOnboarding('name');
   }
 
   // ------------------------------------------------------------------ gems (OnlineBridge)

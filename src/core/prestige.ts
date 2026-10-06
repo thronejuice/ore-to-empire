@@ -44,6 +44,7 @@ export function prestige(s: GameState, seed = Math.floor(Math.random() * 1e9), n
   const gained = sharesFor(s.stats.totalEarned);
   const next = newGame(seed, now);
   next.settings = { ...s.settings };
+  next.player = s.player;
   next.prestige = {
     count: s.prestige.count + 1,
     shares: s.prestige.shares + gained,

@@ -138,7 +138,9 @@ export function SettingsPanel() {
           {confirm ? t('ui.resetConfirm') : t('ui.resetGame')}
         </button>
       </div>
-      <p className="dim small version">Ore to Empire · v{__APP_VERSION__}</p>
+      <p className="dim small version">
+        {game.state.player && <>{game.state.player.name} · </>}Ore to Empire · v{__APP_VERSION__}
+      </p>
     </Modal>
   );
 }
