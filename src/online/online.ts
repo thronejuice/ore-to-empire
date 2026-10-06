@@ -25,6 +25,8 @@ export interface OnlineUi {
   payment: { purchaseId: string; pack: PackId; qr: string | null; status: 'pending' | 'paid' | 'failed' | 'expired'; failure?: string } | null;
   /** the player's unique name (null until picked) */
   username: string | null;
+  /** number of players currently online (null = not connected yet) */
+  onlineCount: number | null;
   /**
    * The step shown before play:
    *  name     — pick a name (creates the account)
@@ -92,6 +94,7 @@ export class Online implements OnlineBridge {
     recoverName: '',
     newCode: null,
     linkSentTo: null,
+    onlineCount: null,
   };
   private user: User | null = null;
   private saving = false;
@@ -116,6 +119,10 @@ export class Online implements OnlineBridge {
 
   signedIn(): boolean {
     return !!this.user;
+  }
+
+  get onlineCount(): number | null {
+    return this.ui.onlineCount;
   }
 
   private changed() {
@@ -167,8 +174,20 @@ export class Online implements OnlineBridge {
     document.addEventListener('visibilitychange', () => {
       if (document.visibilityState === 'hidden') void this.cloudSave();
     });
+    this.trackPresence();
     this.ui.ready = true;
     this.changed();
+  }
+
+  private trackPresence() {
+    const channel = this.sb.channel('online-players', { config: { presence: { key: this.user?.id ?? 'guest' } } });
+    channel.on('presence', { event: 'sync' }, () => {
+      this.ui.onlineCount = Object.keys(channel.presenceState()).length;
+      this.changed();
+    });
+    channel.subscribe(async (status) => {
+      if (status === 'SUBSCRIBED') await channel.track({ t: Date.now() });
+    });
   }
 
   /**

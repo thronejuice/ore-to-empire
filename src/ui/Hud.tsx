@@ -47,6 +47,12 @@ export function TopBar() {
         <button className="chip gems mono" onClick={() => game.openPanel('shop')} aria-label={t('ui.gems')}>
           <GemIcon /> {s.gems}
         </button>
+        {(game.online?.onlineCount ?? 0) > 0 && (
+          <span className="chip online-count" title={t('ui.onlineCount', { n: game.online!.onlineCount! })}>
+            <span className="online-dot" />
+            {game.online!.onlineCount}
+          </span>
+        )}
         {s.research.active && (
           <button className="chip mono" onClick={() => game.openPanel('research')}>
             <NavIcon panel="research" size={14} /> {fmtClock(s.research.active.remaining)}

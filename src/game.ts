@@ -87,6 +87,8 @@ export interface OnlineBridge {
   claimDaily(day: string, key: string, gems: number): Promise<{ ok: true; gems: number } | { ok: false; reason: string }>;
   /** persists immediately (used after prestige / big changes) */
   saveNow?(state: GameState): void;
+  /** number of players currently online, or null if not yet connected */
+  onlineCount?: number | null;
 }
 
 type Listener = () => void;

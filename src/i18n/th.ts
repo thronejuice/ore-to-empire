@@ -203,6 +203,7 @@ export const th: Dict = {
   'ui.prestige': 'ขายกิจการ',
   'ui.shop': 'ร้านเพชร',
   'ui.gems': 'เพชร',
+  'ui.onlineCount': 'ออนไลน์ {n} คน',
   'ui.time': 'เวลา',
   'ui.start': 'เริ่ม',
   'ui.researching': 'กำลังวิจัย',

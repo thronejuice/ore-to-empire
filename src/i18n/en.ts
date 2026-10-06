@@ -201,6 +201,7 @@ export const en = {
   'ui.prestige': 'Sell company',
   'ui.shop': 'Gem shop',
   'ui.gems': 'Gems',
+  'ui.onlineCount': '{n} online',
   'ui.time': 'Time',
   'ui.start': 'Start',
   'ui.researching': 'Researching',

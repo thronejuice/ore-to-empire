@@ -974,6 +974,19 @@ button {
   border-color: var(--amber);
   color: var(--amber);
 }
+.chip.online-count {
+  color: #7defa7;
+  border-color: #7defa740;
+  gap: 6px;
+}
+.online-dot {
+  width: 7px;
+  height: 7px;
+  border-radius: 50%;
+  background: #7defa7;
+  box-shadow: 0 0 5px #7defa7;
+  flex-shrink: 0;
+}
 .icon-btn {
   position: relative;
 }
