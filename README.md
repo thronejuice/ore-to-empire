@@ -25,7 +25,7 @@ To turn on accounts, cloud saves and the gem store, follow **[docs/SETUP-PHASE4.
 - **Ore:** every deposit tile has a grade (low ×0.6 / normal / high ×1.5). Rich veins (×3, limited amount, low-ore warning) appear while you play and pause while you're away.
 - **Land:** buy adjacent plots; sand and uranium only exist on bought land.
 - **Research:** 23 timed projects in 5 tiers (keeps running offline).
-- **Meta:** tutorial + guided quests, contracts, 3 daily missions (gems), prestige ("sell the company" for shares and perks), gem items (time skip, income ×2, offline cap).
+- **Meta:** how-to-play intro slides (replay from Settings), "what's new" notes after each update, tutorial + guided quests, contracts, 3 daily missions (gems), prestige ("sell the company" for shares and perks), gem items (time skip, income ×2, offline cap).
 - **Offline progress:** up to 8 h (more with perks/gems); server clock for signed-in players.
 - **Accounts (v1.0.0):** pick a unique player name before playing; the server creates the account with a random password kept on the device (no login next time) and a one-time recovery code for new devices. Email, Google and LINE can be linked as backups.
 

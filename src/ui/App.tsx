@@ -12,6 +12,8 @@ import { ShopPanel } from './ShopPanel';
 import { TileSheet } from './TileSheet';
 import { AccountPanel, ConflictModal, PaymentModal } from './OnlinePanels';
 import { Onboarding } from './Onboarding';
+import { Intro } from './Intro';
+import { WhatsNew } from './WhatsNew';
 
 export function App() {
   const [game] = useState(() => new Game(undefined, { deferCatchUp: hasStoredSession() }));
@@ -84,6 +86,8 @@ export function App() {
         <ConflictModal />
         <OfflineModal />
         <Onboarding />
+        <Intro />
+        <WhatsNew />
       </div>
     </GameContext.Provider>
   );

@@ -131,6 +131,12 @@ export function SettingsPanel() {
         </div>
       </div>
       <div className="setting">
+        <span>{t('intro.howToPlay')}</span>
+        <button className="btn small" onClick={() => game.openIntro()}>
+          {t('intro.open')}
+        </button>
+      </div>
+      <div className="setting">
         <span className="dim small">{t('ui.zoomHint')}</span>
       </div>
       <div className="setting">

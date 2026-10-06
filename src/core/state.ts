@@ -220,7 +220,7 @@ export function newGame(seed = Math.floor(Math.random() * 1e9), now = Date.now()
       trips: 0,
       localEarned: 0,
     },
-    quests: { done: [], tutorialSkipped: false },
+    quests: { done: [], tutorialSkipped: false, introSeen: false },
     settings: { lang: 'th', sound: true },
     research: { done: [], active: null },
     markets: freshMarkets(),

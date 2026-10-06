@@ -55,7 +55,7 @@ export function prestige(s: GameState, seed = Math.floor(Math.random() * 1e9), n
   next.boostUntil = s.boostUntil;
   next.offlineBonusHours = s.offlineBonusHours;
   next.daily = s.daily;
-  next.quests = { done: QUESTS.map((q) => q.id), tutorialSkipped: true };
+  next.quests = { done: QUESTS.map((q) => q.id), tutorialSkipped: true, introSeen: true };
   next.money += (next.prestige.perks.p_cash ?? 0) * PERK_VALUES.cashPerLevel;
 
   const keepTier = (next.prestige.perks.p_research ?? 0) - 1; // 0 → tier A, 1 → tiers A+B

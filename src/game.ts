@@ -75,6 +75,8 @@ export interface UiState {
   focus: [number, number] | null;
   /** a proposed belt layout waiting for the player to accept */
   tidy: TidyPlan | null;
+  /** the intro slides were reopened from Settings */
+  intro: boolean;
 }
 
 /**
@@ -113,6 +115,7 @@ export class Game {
     tile: null,
     focus: null,
     tidy: null,
+    intro: false,
   };
   events: SimEvent[] = [];
   structureVersion = 0;
@@ -721,6 +724,28 @@ export class Game {
   skipTutorial() {
     skipTutorial(this.state);
     this.structureChanged();
+  }
+
+  openIntro() {
+    this.ui = { ...this.ui, panel: 'none', intro: true };
+    this.emit();
+  }
+
+  closeIntro() {
+    this.ui.intro = false;
+    if (this.state.quests.introSeen === false) {
+      // a new player starts on this version: no "what's new" for it
+      this.state.quests.introSeen = true;
+      this.state.settings.seenVersion = __APP_VERSION__;
+      this.save();
+    }
+    this.emit();
+  }
+
+  dismissWhatsNew() {
+    this.state.settings.seenVersion = __APP_VERSION__;
+    this.save();
+    this.emit();
   }
 
   dismissOffline() {

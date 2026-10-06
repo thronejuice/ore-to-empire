@@ -143,8 +143,10 @@ export interface GameState {
   beltLevel: number;
   power: { gen: number; demand: number; satisfaction: number; battery: number; batteryMax: number };
   stats: Stats;
-  quests: { done: string[]; tutorialSkipped: boolean };
-  settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView };
+  /** introSeen: false only on a fresh save until the intro popup is closed; older saves lack it (= seen) */
+  quests: { done: string[]; tutorialSkipped: boolean; introSeen?: boolean };
+  /** seenVersion: the last game version whose "what's new" notes the player closed */
+  settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView; seenVersion?: string };
   /** the player's name (v1.0.0; older saves don't have one until the player picks it) */
   player?: { name: string };
 

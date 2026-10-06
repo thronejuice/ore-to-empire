@@ -1753,3 +1753,112 @@ select:focus-visible {
 .acct-section form {
   margin: 0;
 }
+
+/* ------------------------------------------------------------ intro slides */
+.intro {
+  position: relative;
+  padding: 26px 22px 18px;
+  align-items: center;
+  text-align: center;
+  gap: 8px;
+  touch-action: pan-y;
+  user-select: none;
+}
+.intro h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.intro p {
+  margin: 0;
+  min-height: 4.5em;
+  line-height: 1.5;
+}
+.intro-skip {
+  position: absolute;
+  top: 12px;
+  right: 14px;
+}
+.intro-art {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  min-height: 84px;
+  margin: 10px 0 6px;
+  animation: introIn 0.25s ease-out;
+}
+.intro-step {
+  display: inline-flex;
+  align-items: center;
+}
+.intro-arrow {
+  margin: 0 8px;
+  color: var(--orange);
+  font-weight: 700;
+}
+.intro-quest {
+  text-align: left;
+  pointer-events: none;
+}
+.intro-dots {
+  display: flex;
+  gap: 8px;
+  margin: 8px 0 4px;
+}
+.intro-dots button {
+  width: 8px;
+  height: 8px;
+  padding: 0;
+  border: none;
+  border-radius: 50%;
+  background: var(--edge-2);
+}
+.intro-dots button.active {
+  background: var(--orange);
+}
+.intro-nav {
+  display: flex;
+  justify-content: space-between;
+  width: 100%;
+  gap: 10px;
+  margin-top: 8px;
+}
+.intro-nav .btn {
+  flex: 1;
+}
+@keyframes introIn {
+  from {
+    opacity: 0;
+    transform: translateY(6px);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .intro-art {
+    animation: none;
+  }
+}
+
+/* ------------------------------------------------------------ what's new */
+.whats-new {
+  padding: 22px 22px 18px;
+  gap: 8px;
+}
+.whats-new h2 {
+  margin: 0;
+  font-size: 20px;
+}
+.whats-new-tag {
+  align-self: flex-start;
+  font-size: 12px;
+  color: var(--orange);
+  border: 1px solid var(--orange);
+  border-radius: 999px;
+  padding: 1px 8px;
+}
+.whats-new ul {
+  margin: 4px 0 8px;
+  padding-left: 20px;
+  line-height: 1.55;
+}
+.whats-new li + li {
+  margin-top: 6px;
+}
