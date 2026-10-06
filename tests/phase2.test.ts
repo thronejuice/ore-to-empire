@@ -204,7 +204,9 @@ describe('migration', () => {
     old.version = 1;
     for (const k of ['research', 'markets', 'vehicles', 'prestige', 'contracts', 'daily', 'gems']) delete old[k];
     const s = deserialize(JSON.stringify(old))!;
-    expect(s.version).toBe(2);
+    expect(s.version).toBe(3);
+    expect(s.world.grade.length).toBe(s.world.size * s.world.size);
+    expect(s.veins).toEqual([]);
     expect(s.research.done).toEqual([]);
     run(s, 5);
     expect(s.world.deposits.includes('sand')).toBe(true);

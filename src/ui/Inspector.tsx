@@ -12,6 +12,8 @@ import {
   type ItemId,
 } from '../config/balance';
 import { globalSpeed, powerMult, recipeUnlocked } from '../core/economy';
+import { tileMult } from '../core/veins';
+import { OreInfo } from './TileSheet';
 import { isUpgradable, linkCarriesIn, totalInvested } from '../core/actions';
 import { getBuilding, invTotal } from '../core/state';
 import { fmtMoney, fmtNum } from '../i18n';
@@ -44,11 +46,18 @@ export function Inspector() {
       <div className="kv">
         <span>{t('ui.extracts')}</span>
         <span>
-          {dep && <ItemIcon item={dep} />} {dep ? t(`item.${dep}`) : '-'} · <span className="mono">{fmtNum((60 / BALANCE.minerTime) * sm)}/min</span>
+          {dep && <ItemIcon item={dep} />} {dep ? t(`item.${dep}`) : '-'} ·{' '}
+          <span className="mono">{fmtNum((60 / BALANCE.minerTime) * sm * tileMult(s, b.x, b.y))}/min</span>
         </span>
         <span>{t('ui.output')}</span>
         <Inv inv={b.output} empty={t('ui.empty')} />
       </div>
+    );
+    body = (
+      <>
+        {body}
+        <OreInfo x={b.x} y={b.y} />
+      </>
     );
   } else if (b.type === 'furnace' || b.type === 'assembler' || b.type === 'fabricator') {
     const r = b.recipe ? RECIPES[b.recipe] : null;

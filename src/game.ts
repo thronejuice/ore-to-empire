@@ -68,6 +68,10 @@ export interface UiState {
   questDone: QuestDef | null;
   panel: Panel;
   busy: boolean; // waiting on the server
+  /** a plain map tile the player tapped (deposit info / build here) */
+  tile: [number, number] | null;
+  /** ask the renderer to centre the camera on a tile */
+  focus: [number, number] | null;
 }
 
 /**
@@ -101,6 +105,8 @@ export class Game {
     questDone: null,
     panel: 'none',
     busy: false,
+    tile: null,
+    focus: null,
   };
   events: SimEvent[] = [];
   structureVersion = 0;
@@ -217,6 +223,16 @@ export class Game {
       } else if (e.type === 'contract_done') {
         this.toast(this.t('ui.contractDone', { item: this.t(`item.${e.contract.item}`), reward: Math.round(e.contract.reward).toLocaleString() }), 'success');
         this.play('quest');
+      } else if (e.type === 'vein_spawn') {
+        this.toast(this.t('ui.veinFound', { ore: this.t(`item.${e.vein.type}`), n: e.vein.total.toLocaleString() }), 'success');
+        this.play('research');
+      } else if (e.type === 'vein_low') {
+        this.toast(this.t('ui.veinLow', { ore: this.t(`item.${e.vein.type}`) }), 'info');
+      } else if (e.type === 'vein_depleted') {
+        this.toast(this.t('ui.veinDepleted', { ore: this.t(`item.${e.vein.type}`) }), 'info');
+        this.emit();
+      } else if (e.type === 'vein_expired') {
+        this.toast(this.t('ui.veinExpired', { ore: this.t(`item.${e.vein.type}`) }), 'info');
       } else if (e.type === 'contract_expired') {
         this.toast(this.t('ui.contractExpired', { item: this.t(`item.${e.contract.item}`) }), 'error');
       }
@@ -301,7 +317,7 @@ export class Game {
     setTimeout(() => {
       this.ui.toasts = this.ui.toasts.filter((t) => t.id !== id);
       this.emit();
-    }, 2800);
+    }, Math.min(7000, Math.max(2800, text.length * 70)));
   }
 
   private result<T>(r: ActionResult<T>): r is { ok: true; value: T } {
@@ -340,6 +356,7 @@ export class Game {
     if (mode.kind !== 'select') {
       this.ui.selected = null;
       this.ui.plot = null;
+      this.ui.tile = null;
     }
     this.emit();
   }
@@ -370,7 +387,39 @@ export class Game {
   select(id: number | null) {
     this.ui.selected = id;
     this.ui.plot = null;
+    this.ui.tile = null;
     this.emit();
+  }
+
+  /** centre the map on a rich vein (cycles through them) and show its info */
+  focusVein() {
+    const vs = this.state.veins;
+    if (!vs.length) return;
+    this.veinCursor = (this.veinCursor + 1) % vs.length;
+    const v = vs[this.veinCursor];
+    this.ui.panel = 'none';
+    this.ui.focus = [v.x, v.y];
+    const b = buildingAt(this.state, v.x, v.y);
+    if (b) this.select(b.id);
+    else {
+      this.select(null);
+      this.ui.tile = [v.x, v.y];
+    }
+    this.emit();
+  }
+
+  private veinCursor = -1;
+
+  buildMinerAtTile() {
+    const tile = this.ui.tile;
+    if (!tile) return;
+    const r = placeBuilding(this.state, 'miner', tile[0], tile[1]);
+    if (this.result(r)) {
+      this.play('place');
+      this.ui.tile = null;
+      this.select(r.value.id);
+      this.structureChanged();
+    }
   }
 
   tapTile(x: number, y: number) {
@@ -434,6 +483,10 @@ export class Game {
       return;
     }
     this.select(hit ? hit.id : null);
+    if (!hit && x >= 0 && y >= 0 && x < this.state.world.size && y < this.state.world.size && this.state.world.deposits[y * this.state.world.size + x]) {
+      this.ui.tile = [x, y];
+      this.emit();
+    }
   }
 
   hoverTile(tile: [number, number] | null) {

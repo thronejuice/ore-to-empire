@@ -1,5 +1,5 @@
-import { POWER } from '../config/balance';
-import { SAVE_VERSION, addRareDeposits, freshMarkets } from './state';
+import { POWER, VEINS } from '../config/balance';
+import { SAVE_VERSION, addRareDeposits, freshMarkets, generateGrades } from './state';
 import type { GameState } from './types';
 
 const KEY = 'ore-to-empire/save';
@@ -64,6 +64,13 @@ export function migrate(data: GameState): GameState | null {
     d.boostUntil = 0;
     d.offlineBonusHours = 0;
     d.version = 2;
+  }
+  if (d.version < 3) {
+    // ore grades + rich veins
+    d.world.grade = generateGrades(d.world.deposits, d.world.size, d.seed);
+    d.veins = [];
+    d.veinTimer = VEINS.firstAfter;
+    d.version = 3;
   }
   return d;
 }

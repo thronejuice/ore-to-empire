@@ -1,7 +1,8 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { BALANCE, BUILDINGS, ITEMS, POWER, beltSpeed, storageCapacity, type BuildingType, type ItemId } from '../config/balance';
+import { BALANCE, BUILDINGS, ITEMS, POWER, VEINS, beltSpeed, storageCapacity, type BuildingType, type ItemId } from '../config/balance';
 import { nextPlotPrice, plotForSale } from '../core/land';
 import { plotsPerRow } from '../core/state';
+import { gradeAt } from '../core/veins';
 import { canPlace } from '../core/actions';
 import { pointAt } from '../core/pathfind';
 import { getBuilding, hqPosition, idx, isUnlocked } from '../core/state';
@@ -219,6 +220,14 @@ export class Renderer {
 
   private frame(dt: number) {
     this.time += dt;
+    const focus = this.game.ui.focus;
+    if (focus) {
+      this.game.ui.focus = null;
+      this.cam.scale = Math.max(this.cam.scale, 0.9);
+      // on phones the info sheet covers the lower half: aim at the upper third instead
+      const shift = this.app.screen.width <= 720 ? (this.app.screen.height * 0.2) / this.cam.scale : 0;
+      this.centerOn((focus[0] + 0.5) * TILE, (focus[1] + 0.5) * TILE + shift);
+    }
     this.world.position.set(this.cam.x, this.cam.y);
     this.world.scale.set(this.cam.scale);
 
@@ -264,15 +273,19 @@ export class Renderer {
         const py = y * TILE;
         const locked = !isUnlocked(s, x, y);
         g.roundRect(px + 2, py + 2, TILE - 4, TILE - 4, 6).fill({ color: col.fill, alpha: locked ? 0.45 : 1 });
-        // deterministic flecks
+        // deterministic flecks: richer ore = more, bigger flecks
+        const grade = gradeAt(s, x, y);
+        const count = [3, 6, 10][grade];
+        const size = [2.4, 3, 3.4][grade];
         let h = (x * 73856093) ^ (y * 19349663);
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < count; i++) {
           h = (h * 1103515245 + 12345) & 0x7fffffff;
           const fx = px + 7 + (h % 26);
           h = (h * 1103515245 + 12345) & 0x7fffffff;
           const fy = py + 7 + (h % 26);
-          g.poly([fx, fy - 3, fx + 3, fy, fx, fy + 3, fx - 3, fy]).fill({ color: col.fleck, alpha: locked ? 0.3 : 0.9 });
+          g.poly([fx, fy - size, fx + size, fy, fx, fy + size, fx - size, fy]).fill({ color: col.fleck, alpha: locked ? 0.3 : grade === 0 ? 0.6 : 0.9 });
         }
+        if (grade === 2 && !locked) g.roundRect(px + 3, py + 3, TILE - 6, TILE - 6, 5).stroke({ width: 1.5, color: col.fleck, alpha: 0.55 });
       }
     }
     // plot borders of the owned land
@@ -447,6 +460,29 @@ export class Renderer {
         prev = pos;
         const [px, py] = pointAt(belt.points, pos);
         this.item(g, it.item, px * TILE, py * TILE, 6.5);
+      }
+    }
+
+    // rich veins: golden pulse, remaining-amount bar, fade timer when unclaimed
+    for (const v of s.veins) {
+      const px = v.x * TILE;
+      const py = v.y * TILE;
+      const glow = 0.45 + 0.4 * Math.sin(this.time * 4 + v.id);
+      const frac = v.amount / v.total;
+      const low = frac <= VEINS.lowFraction;
+      g.roundRect(px - 1, py - 1, TILE + 2, TILE + 2, 8).stroke({ width: 3, color: low ? C.red : C.amber, alpha: glow });
+      for (let k = 0; k < 3; k++) {
+        const a = this.time * 1.4 + (k * Math.PI * 2) / 3 + v.id;
+        const sx = px + TILE / 2 + Math.cos(a) * 15;
+        const sy = py + TILE / 2 + Math.sin(a) * 15;
+        g.star(sx, sy, 4, 3.2, 1.2, a).fill({ color: 0xfff1b8, alpha: 0.85 });
+      }
+      g.rect(px + 4, py + TILE + 2, TILE - 8, 4).fill({ color: 0x000000, alpha: 0.6 });
+      g.rect(px + 4, py + TILE + 2, (TILE - 8) * frac, 4).fill(low ? C.red : C.amber);
+      const claimed = s.buildings.some((b) => b.type === 'miner' && b.x === v.x && b.y === v.y);
+      if (!claimed) {
+        const t = Math.max(0, v.ttl / VEINS.unclaimedTtl);
+        g.moveTo(px + TILE / 2, py - 8).arc(px + TILE / 2, py - 8, 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * t).stroke({ width: 2, color: 0xfff1b8, alpha: 0.9 });
       }
     }
 

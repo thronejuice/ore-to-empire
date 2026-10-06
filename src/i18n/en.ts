@@ -434,6 +434,21 @@ export const en = {
   'ui.moveHint': 'Tap the new spot for the {name}',
   'err.cantReroute': 'Belts can\'t reach that spot',
   'err.samePlace': 'It\'s already here',
+
+  'ui.grade': 'Ore grade',
+  'ui.gradeLow': 'Low',
+  'ui.gradeNormal': 'Normal',
+  'ui.gradeHigh': 'High',
+  'ui.gradeHint': 'Richer tiles have more sparkles. Tiles deep inside a deposit are usually the richest.',
+  'ui.buildDrillHere': 'Build a drill here',
+  'ui.richVein': 'Rich vein',
+  'ui.veinLeft': '{pct}% left',
+  'ui.veinRunningLow': 'Running low',
+  'ui.veinFades': 'Fades in {time} unless a drill starts mining it',
+  'ui.veinFound': 'Rich {ore} vein found! {n} ore at ×3 speed. Tap ✦ at the top to see it.',
+  'ui.veinLow': 'Your rich {ore} vein is running low',
+  'ui.veinDepleted': 'The rich {ore} vein is mined out — the tile is a normal deposit again',
+  'ui.veinExpired': 'A rich {ore} vein faded away',
 };
 
 export type Dict = Record<keyof typeof en, string>;

@@ -101,6 +101,18 @@ export interface DailyMission {
   claimed: boolean;
 }
 
+export interface Vein {
+  id: number;
+  x: number;
+  y: number;
+  type: DepositId;
+  amount: number;
+  total: number;
+  /** seconds left before an unclaimed vein disappears */
+  ttl: number;
+  warned: boolean;
+}
+
 export interface GameState {
   version: number;
   seed: number;
@@ -109,7 +121,17 @@ export interface GameState {
   lastSaved: number;
   /** guards against clocks moved backwards: the latest wall-clock time we've seen */
   maxSeenTime: number;
-  world: { size: number; deposits: (DepositId | null)[]; plots: boolean[] };
+  world: {
+    size: number;
+    deposits: (DepositId | null)[];
+    /** ore grade per tile: 0 low, 1 normal, 2 high (see GRADE_MULT) */
+    grade: number[];
+    plots: boolean[];
+  };
+  /** temporary rich veins (only active while the game is open) */
+  veins: Vein[];
+  /** seconds until the next rich vein may appear */
+  veinTimer: number;
   buildings: Building[];
   belts: Belt[];
   nextId: number;

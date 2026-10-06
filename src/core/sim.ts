@@ -17,13 +17,15 @@ import { tickFleet } from './fleet';
 import { sell, tickMarkets } from './market';
 import { tickResearch } from './research';
 import { invTotal } from './state';
+import { mineFromVein, tickVeins, tileMult, type VeinEvent } from './veins';
 import type { Belt, Building, Contract, GameState, Inventory } from './types';
 
 export type SimEvent =
   | { type: 'sold'; buildingId: number; item: ItemId; amount: number }
   | { type: 'research'; id: ResearchId }
   | { type: 'contract_done'; contract: Contract }
-  | { type: 'contract_expired'; contract: Contract };
+  | { type: 'contract_expired'; contract: Contract }
+  | VeinEvent;
 
 export { incomePerMinute };
 
@@ -128,7 +130,7 @@ export function updatePower(state: GameState, dt: number) {
   state.power.batteryMax = batteries.length * POWER.batteryCapacity;
 }
 
-function updateBuilding(state: GameState, b: Building, dt: number, speed: number) {
+function updateBuilding(state: GameState, b: Building, dt: number, speed: number, events?: SimEvent[]) {
   const sat = state.power.satisfaction;
 
   if (b.type === 'miner') {
@@ -146,7 +148,7 @@ function updateBuilding(state: GameState, b: Building, dt: number, speed: number
       return;
     }
     b.status = 'working';
-    b.progress += (dt * sat * speed * levelSpeed(b.level)) / BALANCE.minerTime;
+    b.progress += (dt * sat * speed * levelSpeed(b.level) * tileMult(state, b.x, b.y)) / BALANCE.minerTime;
     while (b.progress >= 1) {
       if (invTotal(b.output) >= BALANCE.outputBufferTotal) {
         b.progress = 1;
@@ -156,6 +158,7 @@ function updateBuilding(state: GameState, b: Building, dt: number, speed: number
       b.progress -= 1;
       add(b.output, dep, 1);
       add(state.stats.produced, dep, 1);
+      mineFromVein(state, b.x, b.y, events as VeinEvent[] | undefined);
     }
     return;
   }
@@ -297,7 +300,7 @@ export function tick(state: GameState, dt: number, events?: SimEvent[]) {
   updatePower(state, dt);
 
   const speed = globalSpeed(state);
-  for (const b of state.buildings) updateBuilding(state, b, dt, speed);
+  for (const b of state.buildings) updateBuilding(state, b, dt, speed, events);
 
   const byId = new Map<number, Building>();
   for (const b of state.buildings) byId.set(b.id, b);
@@ -315,6 +318,7 @@ export function tick(state: GameState, dt: number, events?: SimEvent[]) {
   }
 
   tickMacro(state, dt, events);
+  tickVeins(state, dt, events as VeinEvent[] | undefined);
 
   const st = state.stats;
   st.bucketTime += dt;

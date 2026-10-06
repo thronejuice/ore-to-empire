@@ -9,6 +9,7 @@ import { Inspector } from './Inspector';
 import { OfflineModal, SettingsPanel, StatsPanel, UpgradesPanel } from './Panels';
 import { ContractsPanel, DailyPanel, FleetPanel, MarketsPanel, MenuSheet, PlotSheet, PrestigePanel, ResearchPanel } from './MetaPanels';
 import { ShopPanel } from './ShopPanel';
+import { TileSheet } from './TileSheet';
 import { AccountPanel, ConflictModal, PaymentModal } from './OnlinePanels';
 
 export function App() {
@@ -62,6 +63,7 @@ export function App() {
         <Toasts />
         <Inspector />
         <PlotSheet />
+        <TileSheet />
         <BottomBar />
         <BuildDrawer />
         <UpgradesPanel />

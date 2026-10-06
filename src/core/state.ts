@@ -1,8 +1,8 @@
-import { BALANCE, BUILDINGS, CITY_ORDER, ITEMS, POWER, type BuildingType, type DepositId, type ItemId } from '../config/balance';
+import { BALANCE, BUILDINGS, CITY_ORDER, ITEMS, POWER, VEINS, type BuildingType, type DepositId, type ItemId } from '../config/balance';
 import type { MarketState } from './types';
 import type { Building, GameState } from './types';
 
-export const SAVE_VERSION = 2;
+export const SAVE_VERSION = 3;
 
 export function mulberry32(seed: number) {
   let a = seed >>> 0;
@@ -139,6 +139,34 @@ export function addRareDeposits(deposits: (DepositId | null)[], size: number, se
   }
 }
 
+/**
+ * Ore grade per tile. Tiles deep inside a cluster tend to be rich, lone edge
+ * tiles poor; land you have to buy leans richer. Own RNG stream, so it can be
+ * generated for older saves too.
+ */
+export function generateGrades(deposits: (DepositId | null)[], size: number, seed: number): number[] {
+  const rand = mulberry32(seed ^ 0x1b873593);
+  const grade = new Array(size * size).fill(0);
+  const start = BALANCE.plotSize; // the four starting plots span [start, 3*start)
+  for (let y = 0; y < size; y++)
+    for (let x = 0; x < size; x++) {
+      const d = deposits[y * size + x];
+      if (!d) continue;
+      let same = 0;
+      for (let dy = -1; dy <= 1; dy++)
+        for (let dx = -1; dx <= 1; dx++) {
+          if (!dx && !dy) continue;
+          const nx = x + dx;
+          const ny = y + dy;
+          if (nx >= 0 && ny >= 0 && nx < size && ny < size && deposits[ny * size + nx] === d) same++;
+        }
+      const outer = x < start || y < start || x >= 3 * start || y >= 3 * start;
+      const score = same + (rand() - 0.5) * 3 + (outer ? 1.2 : 0);
+      grade[y * size + x] = score >= 5 ? 2 : score <= 1.5 ? 0 : 1;
+    }
+  return grade;
+}
+
 export function freshMarkets(): Partial<Record<(typeof CITY_ORDER)[number], MarketState>> {
   const out: Partial<Record<(typeof CITY_ORDER)[number], MarketState>> = {};
   for (const c of CITY_ORDER) {
@@ -164,6 +192,7 @@ export function newGame(seed = Math.floor(Math.random() * 1e9), now = Date.now()
   const plots = new Array(plotsPerRow * plotsPerRow).fill(false);
   for (const [px, py] of BALANCE.startPlots) plots[py * plotsPerRow + px] = true;
 
+  const deposits = generateDeposits(size, seed);
   const state: GameState = {
     version: SAVE_VERSION,
     seed,
@@ -171,7 +200,9 @@ export function newGame(seed = Math.floor(Math.random() * 1e9), now = Date.now()
     time: 0,
     lastSaved: now,
     maxSeenTime: now,
-    world: { size, deposits: generateDeposits(size, seed), plots },
+    world: { size, deposits, grade: generateGrades(deposits, size, seed), plots },
+    veins: [],
+    veinTimer: VEINS.firstAfter,
     buildings: [],
     belts: [],
     nextId: 1,

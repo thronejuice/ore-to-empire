@@ -474,3 +474,20 @@ export function allRecipesFor(type: BuildingType): RecipeId[] {
 /** Phase-1 alias kept for older imports */
 export const speedMult = levelSpeed;
 export const powerDraw = levelPower;
+
+// =============================================================================
+// Ore grades & rich veins
+// =============================================================================
+
+/** grade index stored per tile: 0 = low, 1 = normal, 2 = high */
+export const GRADE_MULT = [0.6, 1, 1.5] as const;
+
+export const VEINS = {
+  mult: 3, // extra speed on a rich vein (on top of the tile's grade)
+  maxActive: 2,
+  firstAfter: 180, // seconds of play before the first vein (after the tutorial)
+  interval: [480, 900] as [number, number], // seconds between new veins
+  unclaimedTtl: 1200, // a vein no drill touches disappears after 20 min
+  lowFraction: 0.25, // "running low" warning
+  amount: { iron_ore: 1500, copper_ore: 1200, coal: 1000, sand: 1000, uranium_ore: 300 } as Record<DepositId, number>,
+};

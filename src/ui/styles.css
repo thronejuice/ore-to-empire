@@ -1430,3 +1430,46 @@ select:focus-visible {
     transition-duration: 0.001ms !important;
   }
 }
+
+/* ============================================================ ore grades & rich veins */
+
+.grade {
+  font-weight: 600;
+}
+.grade.g0 {
+  color: var(--dim);
+}
+.grade.g2 {
+  color: var(--amber);
+}
+.vein-box {
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+  margin-top: 10px;
+  padding: 10px;
+  border-radius: 10px;
+  border: 1px solid rgba(255, 201, 74, 0.55);
+  background: rgba(255, 201, 74, 0.08);
+}
+.vein-box strong {
+  color: var(--amber);
+}
+.vein-box .meter .fill {
+  background: var(--amber);
+}
+.vein-box.low {
+  border-color: rgba(255, 90, 90, 0.6);
+  background: rgba(255, 90, 90, 0.08);
+}
+.vein-box.low .meter .fill {
+  background: var(--red);
+}
+.vein-box p {
+  margin: 0;
+}
+.chip.vein {
+  border-color: var(--amber);
+  color: var(--amber);
+  animation: blink 1.6s ease-in-out infinite;
+}

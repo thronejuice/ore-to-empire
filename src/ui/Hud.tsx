@@ -51,6 +51,11 @@ export function TopBar() {
             <NavIcon panel="research" size={14} /> {fmtClock(s.research.active.remaining)}
           </button>
         )}
+        {s.veins.length > 0 && (
+          <button className="chip vein" onClick={() => game.focusVein()} title={t('ui.richVein')}>
+            ✦ {s.veins.length}
+          </button>
+        )}
         {boostActive(s, now) && <span className="chip boost mono">×2 · {fmtClock((s.boostUntil - now) / 1000)}</span>}
       </div>
       <nav className="top-actions desktop-nav">
@@ -191,7 +196,7 @@ export function BottomBar() {
     );
   }
 
-  if (game.ui.selected !== null || game.ui.plot) return null; // the inspector takes the bottom on mobile
+  if (game.ui.selected !== null || game.ui.plot || game.ui.tile) return null; // the inspector takes the bottom on mobile
 
   return (
     <div className="bottombar">

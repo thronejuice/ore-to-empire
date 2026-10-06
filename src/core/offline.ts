@@ -3,6 +3,7 @@ import { offlineCapHours } from './economy';
 import { invTotal } from './state';
 import { tick, tickMacro } from './sim';
 import type { Building, GameState, Inventory } from './types';
+import { veinsEnabled } from './veins';
 
 export interface OfflineReport {
   seconds: number; // absence credited (after the cap)
@@ -28,6 +29,17 @@ export interface OfflineReport {
  */
 export function applyOffline(state: GameState, awaySeconds: number, opts: { ignoreCap?: boolean } = {}): OfflineReport | null {
   if (!(awaySeconds > 0)) return null; // also catches clocks moved backwards (negative)
+  // rich veins pause while away: they neither drain nor boost the extrapolated income
+  const veinsWere = veinsEnabled.on;
+  veinsEnabled.on = false;
+  try {
+    return simulateOffline(state, awaySeconds, opts);
+  } finally {
+    veinsEnabled.on = veinsWere;
+  }
+}
+
+function simulateOffline(state: GameState, awaySeconds: number, opts: { ignoreCap?: boolean }): OfflineReport {
   const cap = opts.ignoreCap ? Infinity : offlineCapHours(state) * 3600;
   const seconds = Math.min(awaySeconds, cap);
   const dt = BALANCE.tickSeconds;
