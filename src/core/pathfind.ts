@@ -66,7 +66,17 @@ function cellsOf(b: Building): [number, number][] {
  * Finds the cheapest belt route between two buildings. Returns the cells strictly
  * between them (may be empty when they touch), or null when no route exists.
  */
-export function findPath(state: GameState, from: Building, to: Building): [number, number][] | null {
+export interface PathCosts {
+  cross: number;
+  turn: number;
+  deposit: number;
+  /** discount for running right next to another belt (keeps belts in tidy bundles) */
+  hug: number;
+}
+
+export const DEFAULT_COSTS: PathCosts = { cross: CROSS_COST, turn: TURN_COST, deposit: DEPOSIT_COST, hug: 0 };
+
+export function findPath(state: GameState, from: Building, to: Building, costs: PathCosts = DEFAULT_COSTS): [number, number][] | null {
   const occ = occupancy(state);
   const size = state.world.size;
   const n = size * size;
@@ -112,10 +122,20 @@ export function findPath(state: GameState, from: Building, to: Building): [numbe
       }
       if (bid !== 0) continue;
       if (!isUnlocked(state, nx, ny)) continue;
-      const step =
+      let step =
         1 +
-        (occ.belts[ncell] > 0 ? CROSS_COST : 0) +
-        (state.world.deposits[ncell] ? DEPOSIT_COST : 0) + (isSrc.has(cell) || d === dir ? 0 : TURN_COST);
+        (occ.belts[ncell] > 0 ? costs.cross : 0) +
+        (state.world.deposits[ncell] ? costs.deposit : 0) +
+        (isSrc.has(cell) || d === dir ? 0 : costs.turn);
+      if (costs.hug && occ.belts[ncell] === 0) {
+        // beside another belt (perpendicular to our direction) → slightly cheaper
+        const px = DIRS[(d + 1) & 3];
+        const a = nx + px[0];
+        const b = ny + px[1];
+        const c = nx - px[0];
+        const e = ny - px[1];
+        if ((inBounds(state, a, b) && occ.belts[idx(state, a, b)] > 0) || (inBounds(state, c, e) && occ.belts[idx(state, c, e)] > 0)) step -= costs.hug;
+      }
       const nnode = ncell * 4 + d;
       if (base + step < dist[nnode]) {
         dist[nnode] = base + step;
