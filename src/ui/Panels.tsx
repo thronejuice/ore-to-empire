@@ -138,7 +138,7 @@ export function SettingsPanel() {
           {confirm ? t('ui.resetConfirm') : t('ui.resetGame')}
         </button>
       </div>
-      <p className="dim small version">Ore to Empire · v0.4.0</p>
+      <p className="dim small version">Ore to Empire · v{__APP_VERSION__}</p>
     </Modal>
   );
 }

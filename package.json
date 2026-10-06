@@ -1,12 +1,13 @@
 {
   "name": "ore-to-empire",
-  "version": "0.1.0",
+  "version": "0.7.1",
   "scripts": {
     "dev": "vite",
     "build": "tsc --noEmit && vite build",
     "build:single": "vite build --mode single",
     "test": "vitest run",
-    "typecheck": "tsc --noEmit"
+    "typecheck": "tsc --noEmit",
+    "release": "node scripts/release.mjs"
   },
   "dependencies": {
     "@supabase/supabase-js": "^2.117.2",
