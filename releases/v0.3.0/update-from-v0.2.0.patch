@@ -1,0 +1,2186 @@
+diff --git a/.env.example b/.env.example
+new file mode 100644
+index 0000000..2bd7ee2
+--- /dev/null
++++ b/.env.example
+@@ -0,0 +1,8 @@
++# Copy to .env and fill in. Without these the game runs offline (guest only).
++# Supabase → Project Settings → API
++VITE_SUPABASE_URL=https://YOUR-PROJECT.supabase.co
++VITE_SUPABASE_ANON_KEY=your-anon-public-key
++# Omise dashboard → Keys (PUBLIC key only — the secret key goes into Supabase secrets)
++VITE_OMISE_PUBLIC_KEY=pkey_test_xxxxxxxxxxxx
++# LINE Developers → your LINE Login channel → Channel ID
++VITE_LINE_CHANNEL_ID=1234567890
+diff --git a/.gitignore b/.gitignore
+index 32068f6..920551f 100644
+--- a/.gitignore
++++ b/.gitignore
+@@ -3,3 +3,7 @@ dist
+ dist-single
+ *.log
+ .DS_Store
++.env
++.env.local
++supabase/.temp
++dist-online
+diff --git a/README.md b/README.md
+index 324a7ea..37c94c5 100644
+--- a/README.md
++++ b/README.md
+@@ -1,9 +1,8 @@
+ # Ore to Empire
+ 
+-Factory-management game for adults: mine → belt → smelt → assemble → sell → upgrade.
+-TypeScript · React (HUD) · PixiJS (map) · Vite. Runs in the browser on desktop and mobile.
+-
+-**Status: Phase 1** — core loop playable end to end.
++Factory-management game for adults: mine → belt → smelt → assemble → export → research → sell the company.
++TypeScript · React (HUD) · PixiJS (map) · Vite · Supabase + Omise (optional online layer).
++Runs in the browser on desktop and mobile; Thai and English.
+ 
+ ## Run
+ 
+@@ -12,55 +11,49 @@ npm install
+ npm run dev            # http://localhost:5173
+ npm test               # simulation tests (vitest)
+ npm run build          # production build → dist/
+-npm run build:single   # one self-contained HTML file → dist-single/index.html
++npm run build:single   # one self-contained HTML file → dist-single/index.html (offline/guest only)
+ ```
+ 
+-Requires Node 20+.
+-
+-## How to play
++Requires Node 20+. With no `.env` the game runs fully offline as a guest.
++To turn on accounts, cloud saves and the gem store, follow **[docs/SETUP-PHASE4.md](docs/SETUP-PHASE4.md)** (Thai).
+ 
+-1. **Build → Mining Drill**, tap an ore deposit (grey = iron, orange = copper, black = coal).
+-2. Tap the drill → **Connect belt** → tap the destination. The belt routes itself.
+-3. Anything delivered to the **HQ** (or a Trade Depot) is sold.
+-4. Smelt ore in a **Furnace** (2 ore → 1 bar) and turn bars into parts in an **Assembler**.
+-5. Watch the **power meter**. The HQ gives 6 MW; past that, every machine slows down.
+-   Build a **Coal Power Plant** (+20 MW) and belt coal into it.
+-6. Tap a machine to change recipe, upgrade (+30 % speed per level) or demolish (50 % refund).
++## What's in the game
+ 
+-Controls: drag to pan · pinch / scroll to zoom · Esc cancels.
+-The factory keeps producing while the game is closed (up to 8 hours).
++- **Production:** 21 items over 5 tiers (ore → bars/steel/glass → parts → motors/circuits/engines → robot arms, computers, EVs). Drills, furnaces, assemblers, 2×2 fabricators.
++- **Logistics:** tap-to-connect belts with auto-routing, warehouses, loading docks; trucks, trains and ships to 5 markets with demand-driven prices and news events.
++- **Power:** HQ grid, coal, solar, batteries, nuclear. Shortage slows every machine.
++- **Land:** buy adjacent plots; sand and uranium only exist on bought land.
++- **Research:** 23 timed projects in 5 tiers (keeps running offline).
++- **Meta:** tutorial + guided quests, contracts, 3 daily missions (gems), prestige ("sell the company" for shares and perks), gem items (time skip, income ×2, offline cap).
++- **Offline progress:** up to 8 h (more with perks/gems); server clock for signed-in players.
+ 
+ ## Project layout
+ 
+ ```
+ src/
+-  config/balance.ts   ← every number: prices, costs, speeds, power, recipes. Tune here.
+-  core/               ← pure game logic, no DOM (unit-tested)
+-    state.ts          world generation, occupancy, helpers
+-    sim.ts            fixed-step simulation: machines, belts, power, selling
+-    pathfind.ts       belt routing (Dijkstra; avoids deposits, can bridge belts)
+-    actions.ts        player actions: place, link, upgrade, recipe, demolish
+-    offline.ts        offline progress (sample + extrapolate, capped)
+-    quests.ts         tutorial + guided quests, building unlocks
+-    save.ts           local save + migrations (SaveStore interface for cloud save later)
+-  game.ts             controller: game loop, input modes, toasts, autosave
+-  render/             PixiJS renderer, camera, touch/mouse input
+-  ui/                 React HUD: top bar, quest card, build drawer, inspector, panels
+-  i18n/               Thai + English strings
+-tests/                vitest simulation tests
++  config/balance.ts     every production/economy number (items, recipes, research, cities, power)
++  config/meta.ts        prestige, contracts, daily missions, gem items & packs
++  core/                 pure game logic, no DOM (unit-tested)
++    sim.ts              fixed-step simulation: machines, belts, power, batteries
++    market.ts fleet.ts  prices/saturation/events · vehicles and docks
++    research.ts land.ts contracts.ts daily.ts prestige.ts gems.ts
++    offline.ts          offline progress (sample, measure, macro-simulate)
++    save.ts             local save + migrations (v1 Phase-1 saves load fine)
++  game.ts               controller: loop, input modes, actions, toasts, autosave
++  audio.ts              synthesized sound effects (Web Audio, no files)
++  render/               PixiJS renderer, camera, touch/mouse input
++  ui/                   React HUD and panels
++  online/               Supabase client, cloud save, server gems, Omise checkout
++  i18n/                 Thai + English
++supabase/
++  migrations/           schema, RLS, gem/save functions
++  functions/            create-charge, omise-webhook, line-auth (Deno)
++public/line-callback.html
++tests/                  vitest simulation tests
++docs/SETUP-PHASE4.md    online setup guide (Thai)
+ ```
+ 
+-The simulation is deterministic and independent of rendering (`core/` never touches the
+-DOM), so the same code can later run on a server to validate saves.
+-
+-## Roadmap
++## Tuning
+ 
+-- **Phase 1 (done):** grid, drills, belts, furnace, assembler, warehouse, coal power,
+-  HQ/depot selling, upgrades, save, offline progress, tutorial + quests, TH/EN.
+-- **Phase 2:** multiple markets with demand-driven prices, trucks/trains/ships,
+-  buying land plots, research tree, tier 3–5 products (steel, motors, circuits, robots, EVs),
+-  solar / batteries / nuclear.
+-- **Phase 3:** prestige ("sell the company" for investor shares), contracts, daily missions,
+-  sound effects, balancing, mobile polish.
+-- **Phase 4:** Supabase accounts (guest → email / Google / LINE), cloud save, server time
+-  for offline progress, Omise gem store (convenience & time-skip only).
++All numbers are in `src/config/balance.ts` and `src/config/meta.ts`.
++Gem prices also live on the server (`supabase/functions/_shared/packs.ts`, `spend_gems` in the migration) — the server copy decides what players pay.
+diff --git a/docs/SETUP-PHASE4.md b/docs/SETUP-PHASE4.md
+new file mode 100644
+index 0000000..d182a1b
+--- /dev/null
++++ b/docs/SETUP-PHASE4.md
+@@ -0,0 +1,175 @@
++# คู่มือตั้งค่าเฟส 4: บัญชีผู้เล่น, Cloud Save และร้านเพชร
++
++เกมเล่นได้เต็มรูปแบบโดยไม่ต้องตั้งค่าอะไร (โหมด guest) ส่วนระบบออนไลน์จะเปิดเองเมื่อใส่ค่าในไฟล์ `.env` ครบ คู่มือนี้เรียงตามลำดับที่ควรทำ
++
++> **สำคัญ:** หน้า artifact บน claude.ai เรียก API ภายนอกไม่ได้ ระบบออนไลน์จึงใช้ได้เฉพาะเมื่อ deploy เกมขึ้นโฮสติ้งของคุณเอง (ขั้นตอนที่ 7)
++
++---
++
++## สิ่งที่ต้องมี
++
++| บัญชี | ใช้ทำอะไร | ค่าใช้จ่ายเริ่มต้น |
++|---|---|---|
++| [Supabase](https://supabase.com) | ฐานข้อมูล, ล็อกอิน, edge functions | ฟรี |
++| [Omise / Opn Payments](https://www.omise.co/th) | รับเงิน PromptPay, บัตร, TrueMoney | ค่าธรรมเนียมต่อรายการ |
++| [LINE Developers](https://developers.line.biz) | ปุ่มล็อกอินด้วย LINE | ฟรี |
++| [Google Cloud Console](https://console.cloud.google.com) | ปุ่มล็อกอินด้วย Google | ฟรี |
++| โฮสติ้ง (Vercel / Netlify / Cloudflare Pages) | เว็บของเกม | ฟรี |
++
++และติดตั้งใน WSL:
++
++```bash
++npm i -g supabase        # Supabase CLI
++supabase --version
++```
++
++---
++
++## 1. สร้างโปรเจกต์ Supabase และฐานข้อมูล
++
++1. สร้างโปรเจกต์ใหม่ที่ supabase.com (เลือก region Singapore จะเร็วสำหรับผู้เล่นไทย)
++2. ใน WSL ที่โฟลเดอร์เกม:
++
++```bash
++supabase login
++supabase link --project-ref <PROJECT_REF>     # ดูจาก URL ของโปรเจกต์
++supabase db push                               # สร้างตารางจาก supabase/migrations/
++```
++
++ไฟล์ migration สร้างตาราง `profiles` (ยอดเพชร), `saves` (cloud save), `gem_ledger` (ประวัติเพชร), `purchases` (การซื้อ) พร้อม Row Level Security: ผู้เล่นอ่านได้เฉพาะข้อมูลตัวเอง และ**แก้ยอดเพชรเองไม่ได้** เปลี่ยนได้ผ่านฟังก์ชันฝั่งเซิร์ฟเวอร์เท่านั้น
++
++3. คัดลอกค่าจาก **Project Settings → API** ไว้ใช้ขั้นต่อไป:
++   - Project URL
++   - `anon` public key
++   - `service_role` key (**ห้ามใส่ในโค้ดฝั่งเว็บเด็ดขาด**)
++
++---
++
++## 2. ตั้งค่าการล็อกอิน (Supabase → Authentication)
++
++**URL Configuration**
++- Site URL: `https://<โดเมนของเกม>/`
++- Redirect URLs: เพิ่ม `https://<โดเมนของเกม>/` และ `http://localhost:5173/` (สำหรับทดสอบ)
++
++**อีเมล (magic link):** เปิดไว้ตั้งแต่ต้น แนะนำให้ตั้ง SMTP ของตัวเองใน Authentication → Emails เพราะ SMTP ฟรีของ Supabase ส่งได้จำนวนจำกัดต่อชั่วโมง
++
++**Google**
++1. Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID (Web application)
++2. Authorized redirect URI: `https://<PROJECT_REF>.supabase.co/auth/v1/callback`
++3. นำ Client ID / Secret ไปใส่ใน Supabase → Authentication → Providers → Google
++
++---
++
++## 3. LINE Login
++
++1. LINE Developers Console → สร้าง Provider → สร้าง channel แบบ **LINE Login**
++2. แท็บ LINE Login → Callback URL: `https://<โดเมนของเกม>/line-callback.html`
++   (ถ้าทดสอบในเครื่อง เพิ่ม `http://localhost:5173/line-callback.html`)
++3. ถ้าต้องการอีเมลของผู้เล่น ให้ยื่นขอสิทธิ์ **Email address permission** ในแท็บ Basic settings
++   (ถ้าไม่ได้สิทธิ์ ระบบยังใช้ได้ โดยสร้างอีเมลแทนที่ไม่มีการส่งจริงให้)
++4. จด **Channel ID** และ **Channel secret**
++
++ระบบทำงานผ่าน edge function `line-auth`: แลก code กับ LINE → ตรวจ ID token กับ LINE (รวม nonce) → สร้าง/หาผู้ใช้ใน Supabase → ออก token ใช้ครั้งเดียวให้เบราว์เซอร์เข้าสู่ระบบ
++
++---
++
++## 4. Omise
++
++1. สมัครที่ omise.co และยืนยันตัวตน (KYC) ระหว่างรออนุมัติ ใช้ **test keys** ได้เลย
++2. Dashboard → Keys: จด **Public key** (`pkey_...`) และ **Secret key** (`skey_...`)
++3. เปิดใช้วิธีชำระเงิน: PromptPay และ TrueMoney Wallet (อาจต้องขอเปิดเพิ่ม)
++4. ตั้ง Webhook (หลังขั้นตอนที่ 5): `https://<PROJECT_REF>.supabase.co/functions/v1/omise-webhook`
++
++โดยทั่วไป Omise ต้องการเว็บไซต์จริงที่แสดงสินค้า ราคา นโยบายคืนเงิน และช่องทางติดต่อ ก่อนอนุมัติ live keys ให้ตรวจสอบเงื่อนไขล่าสุดกับ Omise โดยตรง
++
++**การไหลของเงิน:** หน้าต่างชำระเงินของ Omise (OmiseCard) รับข้อมูลบัตรเอง เกมไม่เห็นเลขบัตร → ส่ง token ให้ `create-charge` สร้าง charge ด้วย secret key → **เพชรเข้าบัญชีเมื่อ webhook ยืนยันเท่านั้น** โดย webhook ดึง charge จาก Omise ใหม่ทุกครั้ง ไม่เชื่อข้อมูลที่ส่งมา และเติมเพชรได้ครั้งเดียวต่อการซื้อ
++
++---
++
++## 5. Deploy edge functions และใส่ secrets
++
++```bash
++supabase secrets set \
++  OMISE_SECRET_KEY=skey_test_xxx \
++  LINE_CHANNEL_ID=1234567890 \
++  LINE_CHANNEL_SECRET=xxxxxxxx \
++  SITE_URL=https://<โดเมนของเกม>/ \
++  ALLOWED_ORIGIN=https://<โดเมนของเกม>
++
++supabase functions deploy create-charge
++supabase functions deploy omise-webhook --no-verify-jwt
++supabase functions deploy line-auth --no-verify-jwt
++```
++
++`SUPABASE_URL`, `SUPABASE_ANON_KEY` และ `SUPABASE_SERVICE_ROLE_KEY` มีให้ใน edge functions อัตโนมัติ ไม่ต้องตั้งเอง
++
++`omise-webhook` และ `line-auth` ต้องใช้ `--no-verify-jwt` เพราะ Omise และหน้า callback ของ LINE ไม่มี token ของ Supabase ส่วนความปลอดภัย webhook ดึง charge จาก Omise ใหม่ทุกครั้ง และ `line-auth` ตรวจ ID token กับ LINE ทุกครั้ง
++
++---
++
++## 6. ไฟล์ `.env` ของเกม
++
++```bash
++cp .env.example .env
++```
++
++| ตัวแปร | ค่า |
++|---|---|
++| `VITE_SUPABASE_URL` | Project URL |
++| `VITE_SUPABASE_ANON_KEY` | anon public key |
++| `VITE_OMISE_PUBLIC_KEY` | `pkey_...` (public เท่านั้น) |
++| `VITE_LINE_CHANNEL_ID` | Channel ID ของ LINE Login |
++
++ทดสอบในเครื่อง: `npm run dev` แล้วเปิด `http://localhost:5173` จะเห็นปุ่ม "บัญชี" และส่วน "ซื้อเพชร" ในร้านเพชร
++
++---
++
++## 7. Deploy เว็บ
++
++```bash
++npm run build      # ได้โฟลเดอร์ dist/
++```
++
++**Vercel / Netlify / Cloudflare Pages:** เชื่อม GitHub repo แล้วตั้ง
++- Build command: `npm run build`
++- Output directory: `dist`
++- Environment variables: ใส่ 4 ตัวจากขั้นตอนที่ 6
++
++หลัง deploy ให้กลับไปอัปเดต URL ในขั้นตอนที่ 2, 3, 4 และ secret `SITE_URL` / `ALLOWED_ORIGIN` ให้ตรงกับโดเมนจริง
++
++---
++
++## 8. ทดสอบก่อนเปิดจริง (test mode)
++
++- ล็อกอินด้วยอีเมล / Google / LINE แล้วเล่นต่อจากอีกเครื่อง
++- ทำภารกิจรายวัน กดรับ ตรวจว่าเพชรเพิ่ม และวันเดียวกันรับได้ไม่เกิน 25 เพชร
++- ซื้อเพชรด้วยบัตรทดสอบของ Omise (ดูเลขบัตรใน Omise docs → Testing) และ PromptPay ในโหมดทดสอบ (ในหน้า charge ของ Dashboard โหมดทดสอบมีปุ่มจำลองผลการชำระเงิน)
++- ตรวจตาราง `purchases` (status = `paid`) และ `gem_ledger` ใน Supabase
++- ส่ง webhook ซ้ำจาก Dashboard ของ Omise แล้วตรวจว่าเพชร**ไม่**เพิ่มซ้ำ
++
++**ก่อนเปิดจริง**
++- [ ] เปลี่ยนเป็น live keys ของ Omise (`OMISE_SECRET_KEY`, `VITE_OMISE_PUBLIC_KEY`)
++- [ ] ตั้ง `ALLOWED_ORIGIN` เป็นโดเมนจริง (ไม่ใช้ `*`)
++- [ ] มีหน้านโยบายความเป็นส่วนตัว เงื่อนไขการใช้งาน และนโยบายคืนเงิน
++- [ ] ตั้ง SMTP ของตัวเองสำหรับอีเมลล็อกอิน
++
++---
++
++## ราคาและเพชร
++
++ราคาแพ็กและราคาไอเท็มมี 2 ที่ ต้องแก้ให้ตรงกันทุกครั้ง:
++
++| อะไร | ฝั่งเกม (แสดงผล) | ฝั่งเซิร์ฟเวอร์ (ตัดสินจริง) |
++|---|---|---|
++| แพ็กเพชร | `src/config/meta.ts` → `PACKS` | `supabase/functions/_shared/packs.ts` |
++| ไอเท็มเพชร | `src/config/meta.ts` → `GEM_ITEMS` | ฟังก์ชัน `spend_gems` ใน migration |
++| เพชรรายวัน | `src/config/meta.ts` → `DAILY` | ฟังก์ชัน `claim_daily_gems` |
++
++ถ้าแก้ฝั่งเซิร์ฟเวอร์ ให้สร้างไฟล์ migration ใหม่ (`supabase migration new <ชื่อ>`) แล้ว `supabase db push`
++
++## การกันโกง
++
++- ยอดเพชรอยู่บนเซิร์ฟเวอร์ ผู้เล่นแก้เองไม่ได้ (RLS + ฟังก์ชัน security definer)
++- ผู้เล่นที่ล็อกอิน: รายได้ออฟไลน์คำนวณจาก**นาฬิกาเซิร์ฟเวอร์** (เวลาที่บันทึกเซฟ เทียบกับเวลาปัจจุบันของเซิร์ฟเวอร์) การปรับนาฬิกาเครื่องจึงไม่มีผล
++- ผู้เล่นแบบ guest: ถ้าตรวจพบว่านาฬิกาเครื่องย้อนหลัง จะไม่นับช่วงนั้น
++- ผลกระทบของเพชร (บูสต์, ข้ามเวลา) ทำงานในเครื่องผู้เล่น เพราะเป็นเกมเล่นคนเดียว ส่วนการ "ใช้" เพชรตรวจที่เซิร์ฟเวอร์เสมอ
+diff --git a/package-lock.json b/package-lock.json
+index bd63abc..9bddb1e 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,14 +1,14 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "1.0.0",
++  "version": "0.1.0",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "ore-to-empire",
+-      "version": "1.0.0",
+-      "license": "ISC",
++      "version": "0.1.0",
+       "dependencies": {
++        "@supabase/supabase-js": "^2.117.2",
+         "pixi.js": "^8.22.0",
+         "react": "^18.3.1",
+         "react-dom": "^18.3.1"
+@@ -329,6 +329,98 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/@supabase/auth-js": {
++      "version": "2.117.2",
++      "resolved": "https://registry.npmjs.org/@supabase/auth-js/-/auth-js-2.117.2.tgz",
++      "integrity": "sha512-Z3WnGwrphYZubrLbxp5Iv0tLA9A5GhvKzJ/ZXglxqwd2QEH2R4dXRltjVJ8sIn4xEW2BSFIGT0yALVJIgZeDYw==",
++      "license": "MIT",
++      "dependencies": {
++        "tslib": "2.8.1"
++      },
++      "engines": {
++        "node": ">=22.0.0"
++      }
++    },
++    "node_modules/@supabase/functions-js": {
++      "version": "2.117.2",
++      "resolved": "https://registry.npmjs.org/@supabase/functions-js/-/functions-js-2.117.2.tgz",
++      "integrity": "sha512-6DT4ZIjmZxa9ANKaBIrjc86AyKrX8M376ynvNeOBBVad3eP7x3UHqWfDR2ynFkHGzCuOpr1A+kObmnahxuwuog==",
++      "license": "MIT",
++      "dependencies": {
++        "tslib": "2.8.1"
++      },
++      "engines": {
++        "node": ">=22.0.0"
++      }
++    },
++    "node_modules/@supabase/phoenix": {
++      "version": "0.4.5",
++      "resolved": "https://registry.npmjs.org/@supabase/phoenix/-/phoenix-0.4.5.tgz",
++      "integrity": "sha512-aAn9H9ovVyeApKy11OWOrrOGq8DV68yWeH4ud2lN9fzn4aO8Zb5GLL9m1pUg9nLqIcT+ZDfAcsZe0E/nqdv2lw==",
++      "license": "MIT"
++    },
++    "node_modules/@supabase/postgrest-js": {
++      "version": "2.117.2",
++      "resolved": "https://registry.npmjs.org/@supabase/postgrest-js/-/postgrest-js-2.117.2.tgz",
++      "integrity": "sha512-V1Qhn+M8xzJqCasOxHZ2KG19Fj39PxU7weEAmOK65/KTsWCRXboB4hcQwFvxRvM7ZikeP9IZWNvQkfjvSxzYFw==",
++      "license": "MIT",
++      "dependencies": {
++        "tslib": "2.8.1"
++      },
++      "engines": {
++        "node": ">=22.0.0"
++      }
++    },
++    "node_modules/@supabase/realtime-js": {
++      "version": "2.117.2",
++      "resolved": "https://registry.npmjs.org/@supabase/realtime-js/-/realtime-js-2.117.2.tgz",
++      "integrity": "sha512-lYXSAIg3eAKA58riUED6Vb+TCzF8jtx18uOoiCaVJ7ZMre6FWBpwB1MPeW+B6vykJT/hPdiuqwcSB7ILMS21ew==",
++      "license": "MIT",
++      "dependencies": {
++        "@supabase/phoenix": "0.4.5",
++        "tslib": "2.8.1"
++      },
++      "engines": {
++        "node": ">=22.0.0"
++      }
++    },
++    "node_modules/@supabase/storage-js": {
++      "version": "2.117.2",
++      "resolved": "https://registry.npmjs.org/@supabase/storage-js/-/storage-js-2.117.2.tgz",
++      "integrity": "sha512-8gAJoVaxZa/War2kFRfJMxGk4M190Q7lJ70BofwGlRxU/u9pIodd6XyTvmXkxOKXWuIYtkDaYPZrIAUt1T/7FQ==",
++      "license": "MIT",
++      "dependencies": {
++        "iceberg-js": "^0.8.1",
++        "tslib": "2.8.1"
++      },
++      "engines": {
++        "node": ">=22.0.0"
++      }
++    },
++    "node_modules/@supabase/supabase-js": {
++      "version": "2.117.2",
++      "resolved": "https://registry.npmjs.org/@supabase/supabase-js/-/supabase-js-2.117.2.tgz",
++      "integrity": "sha512-eSG2VKnHR+Clp1PmidZ1/weJ8PJwoybjva3L2GgKqFG4YDS1Iqmc61psKGZP5xw6OMT2O7ZorPR42PY6q1BOXg==",
++      "license": "MIT",
++      "dependencies": {
++        "@supabase/auth-js": "2.117.2",
++        "@supabase/functions-js": "2.117.2",
++        "@supabase/postgrest-js": "2.117.2",
++        "@supabase/realtime-js": "2.117.2",
++        "@supabase/storage-js": "2.117.2"
++      },
++      "engines": {
++        "node": ">=22.0.0"
++      },
++      "peerDependencies": {
++        "@opentelemetry/api": ">=1.0.0"
++      },
++      "peerDependenciesMeta": {
++        "@opentelemetry/api": {
++          "optional": true
++        }
++      }
++    },
+     "node_modules/@types/chai": {
+       "version": "5.2.3",
+       "resolved": "https://registry.npmjs.org/@types/chai/-/chai-5.2.3.tgz",
+@@ -955,6 +1047,15 @@
+         "js-binary-schema-parser": "^2.0.3"
+       }
+     },
++    "node_modules/iceberg-js": {
++      "version": "0.8.1",
++      "resolved": "https://registry.npmjs.org/iceberg-js/-/iceberg-js-0.8.1.tgz",
++      "integrity": "sha512-1dhVQZXhcHje7798IVM+xoo/1ZdVfzOMIc8/rgVSijRK38EDqOJoGula9N/8ZI5RD8QTxNQtK/Gozpr+qUqRRA==",
++      "license": "MIT",
++      "engines": {
++        "node": ">=20.0.0"
++      }
++    },
+     "node_modules/is-number": {
+       "version": "7.0.0",
+       "resolved": "https://registry.npmjs.org/is-number/-/is-number-7.0.0.tgz",
+@@ -1551,6 +1652,12 @@
+         "node": ">=8.0"
+       }
+     },
++    "node_modules/tslib": {
++      "version": "2.8.1",
++      "resolved": "https://registry.npmjs.org/tslib/-/tslib-2.8.1.tgz",
++      "integrity": "sha512-oJFu94HQb+KVduSUQL7wnpmqnfmLsOA/nAh6b6EH0wCEoK0/mPeXU6c3wKDV83MkOuHPRHtSXKKU99IBazS/2w==",
++      "license": "0BSD"
++    },
+     "node_modules/typescript": {
+       "version": "7.0.2",
+       "resolved": "https://registry.npmjs.org/typescript/-/typescript-7.0.2.tgz",
+diff --git a/package.json b/package.json
+index e01a7ad..9f5a0e0 100644
+--- a/package.json
++++ b/package.json
+@@ -9,6 +9,7 @@
+     "typecheck": "tsc --noEmit"
+   },
+   "dependencies": {
++    "@supabase/supabase-js": "^2.117.2",
+     "pixi.js": "^8.22.0",
+     "react": "^18.3.1",
+     "react-dom": "^18.3.1"
+diff --git a/public/line-callback.html b/public/line-callback.html
+new file mode 100644
+index 0000000..0931f50
+--- /dev/null
++++ b/public/line-callback.html
+@@ -0,0 +1,23 @@
++<!doctype html>
++<html lang="th">
++  <head>
++    <meta charset="utf-8" />
++    <meta name="viewport" content="width=device-width, initial-scale=1" />
++    <title>Signing in…</title>
++    <style>
++      body { margin: 0; display: grid; place-items: center; height: 100vh; background: #0f1318; color: #e8edf3; font: 15px system-ui, sans-serif; }
++    </style>
++  </head>
++  <body>
++    <p>กำลังเข้าสู่ระบบด้วย LINE…</p>
++    <script>
++      // LINE redirects here with ?code&state. Hand them to the game page, which
++      // checks the state and finishes sign-in through the line-auth function.
++      var p = new URLSearchParams(location.search);
++      try {
++        sessionStorage.setItem('ote.line_cb', JSON.stringify({ code: p.get('code'), state: p.get('state'), error: p.get('error') }));
++      } catch (e) {}
++      location.replace('./');
++    </script>
++  </body>
++</html>
+diff --git a/src/game.ts b/src/game.ts
+index dc38c7e..48a7489 100644
+--- a/src/game.ts
++++ b/src/game.ts
+@@ -111,14 +111,40 @@ export class Game {
+   private raf = 0;
+   private toastId = 0;
+ 
+-  constructor(private store: SaveStore = localSave) {
++  /** offline time waiting for the server's clock (signed-in players) */
++  private pendingAway: number | null = null;
++
++  constructor(
++    private store: SaveStore = localSave,
++    opts: { deferCatchUp?: boolean } = {},
++  ) {
+     const loaded = store.load();
+     this.state = loaded ?? newGame();
+     setSoundEnabled(this.state.settings.sound);
+-    if (loaded) this.catchUp(this.awaySince(loaded.lastSaved));
++    if (loaded) {
++      const away = this.awaySince(loaded.lastSaved);
++      if (opts.deferCatchUp) this.pendingAway = away;
++      else this.catchUp(away);
++    }
+     ensureDaily(this.state);
+   }
+ 
++  /** Apply offline progress held back at startup (device clock unless the server says otherwise). */
++  applyDeferredCatchUp(away?: number) {
++    if (this.catchUpResolved) return; // only once, even if the network fallback fired first
++    this.catchUpResolved = true;
++    const a = away ?? this.pendingAway;
++    this.pendingAway = null;
++    if (a && a > 0) this.catchUp(a);
++  }
++
++  clearDeferredCatchUp() {
++    this.catchUpResolved = true;
++    this.pendingAway = null;
++  }
++
++  private catchUpResolved = false;
++
+   /** seconds since `since`, refusing credit if the clock went backwards */
+   awaySince(since: number, now = Date.now()): number {
+     if (now < this.state.maxSeenTime - 60_000) return 0; // clock moved back: no credit
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 1a82556..55480a8 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -387,6 +387,47 @@ export const en = {
+   'q.q_motor.d': 'Fabricators combine Machine Parts, Gears and Wire into Motors.',
+   'q.q_million.t': 'Earn $1M, then sell the company',
+   'q.q_million.d': 'Investors pay in shares that boost every future run.',
++
++  'ui.account': 'Account',
++  'ui.connecting': 'Connecting…',
++  'ui.signedInAs': 'Signed in as',
++  'ui.cloudSave': 'Cloud save',
++  'ui.savedAt': 'Saved at {time}',
++  'ui.notYet': 'Not yet',
++  'ui.cloudHint': 'Your factory is saved to the cloud every 30 seconds. Sign in on any device to continue.',
++  'ui.signOut': 'Sign out',
++  'ui.signInWhy': 'Sign in to keep your factory in the cloud, play on other devices and buy gems. You can keep playing as a guest.',
++  'ui.email': 'Email',
++  'ui.sendLink': 'Send link',
++  'ui.emailSent': 'Check {email} and tap the sign-in link.',
++  'ui.or': 'or',
++  'ui.withGoogle': 'Continue with Google',
++  'ui.withLine': 'Continue with LINE',
++  'ui.guestNote': 'Gems earned as a guest stay on this device.',
++  'ui.buyGems': 'Buy gems',
++  'ui.starter': 'Starter · once',
++  'ui.plusBoost': '+ income ×2 for {h} h',
++  'ui.signInToBuy': 'Sign in to buy gems',
++  'ui.payMethods': 'PromptPay, credit/debit card or TrueMoney Wallet, processed by Omise.',
++  'ui.pay': 'Pay',
++  'ui.payment': 'Payment',
++  'ui.scanQr': 'Scan with any banking app to pay ฿{amount}.',
++  'ui.waitingPayment': 'Waiting for the payment…',
++  'ui.waitingConfirm': 'Gems arrive as soon as the payment is confirmed. You can close this and keep playing.',
++  'ui.paymentDone': '+{gems} gems added. Thank you!',
++  'ui.done': 'Done',
++  'ui.conflictTitle': 'Two saves found',
++  'ui.conflictBody': 'This account already has a factory in the cloud, and this device has a different one. Which do you want to keep? The other will be replaced.',
++  'ui.thisDevice': 'This device',
++  'ui.useCloud': 'Use cloud save',
++  'ui.useLocal': 'Use this device',
++  'err.network': 'Connection problem — try again',
++  'err.alreadyClaimed': 'Already claimed',
++  'err.dailyCap': 'Daily gem limit reached',
++  'err.badDay': 'Check your device date',
++  'err.signInFailed': 'Sign-in failed — try again',
++  'err.paymentFailed': 'Payment failed.',
++  'err.alreadyBought': 'You already bought the starter pack',
+ };
+ 
+ export type Dict = Record<keyof typeof en, string>;
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index 56100dc..34af650 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -389,4 +389,45 @@ export const th: Dict = {
+   'q.q_motor.d': 'โรงประกอบขั้นสูงรวมชิ้นส่วนเครื่องจักร เฟือง และสายไฟเป็นมอเตอร์',
+   'q.q_million.t': 'ทำเงิน $1M แล้วขายกิจการ',
+   'q.q_million.d': 'นักลงทุนจ่ายเป็นหุ้น ซึ่งเพิ่มรายได้ทุกรอบถัดไป',
++
++  'ui.account': 'บัญชี',
++  'ui.connecting': 'กำลังเชื่อมต่อ…',
++  'ui.signedInAs': 'เข้าสู่ระบบเป็น',
++  'ui.cloudSave': 'เซฟบนคลาวด์',
++  'ui.savedAt': 'บันทึกเมื่อ {time}',
++  'ui.notYet': 'ยังไม่ได้บันทึก',
++  'ui.cloudHint': 'โรงงานของคุณถูกบันทึกขึ้นคลาวด์ทุก 30 วินาที เข้าสู่ระบบจากเครื่องไหนก็เล่นต่อได้',
++  'ui.signOut': 'ออกจากระบบ',
++  'ui.signInWhy': 'เข้าสู่ระบบเพื่อเก็บโรงงานไว้บนคลาวด์ เล่นต่อได้ทุกเครื่อง และซื้อเพชรได้ หรือเล่นแบบไม่มีบัญชีต่อก็ได้',
++  'ui.email': 'อีเมล',
++  'ui.sendLink': 'ส่งลิงก์',
++  'ui.emailSent': 'เปิดอีเมล {email} แล้วแตะลิงก์เข้าสู่ระบบ',
++  'ui.or': 'หรือ',
++  'ui.withGoogle': 'เข้าสู่ระบบด้วย Google',
++  'ui.withLine': 'เข้าสู่ระบบด้วย LINE',
++  'ui.guestNote': 'เพชรที่ได้ตอนเล่นแบบไม่มีบัญชีจะอยู่ในเครื่องนี้เท่านั้น',
++  'ui.buyGems': 'ซื้อเพชร',
++  'ui.starter': 'แพ็กเริ่มต้น · ซื้อได้ครั้งเดียว',
++  'ui.plusBoost': '+ รายได้ ×2 นาน {h} ชม.',
++  'ui.signInToBuy': 'เข้าสู่ระบบเพื่อซื้อเพชร',
++  'ui.payMethods': 'จ่ายผ่าน PromptPay บัตรเครดิต/เดบิต หรือ TrueMoney Wallet ดำเนินการโดย Omise',
++  'ui.pay': 'ชำระเงิน',
++  'ui.payment': 'การชำระเงิน',
++  'ui.scanQr': 'สแกนด้วยแอปธนาคารใดก็ได้ เพื่อจ่าย ฿{amount}',
++  'ui.waitingPayment': 'กำลังรอการชำระเงิน…',
++  'ui.waitingConfirm': 'เพชรจะเข้าทันทีที่ยืนยันการชำระเงิน ปิดหน้าต่างนี้แล้วเล่นต่อได้เลย',
++  'ui.paymentDone': 'ได้รับ {gems} เพชรแล้ว ขอบคุณครับ!',
++  'ui.done': 'เสร็จสิ้น',
++  'ui.conflictTitle': 'พบเซฟสองชุด',
++  'ui.conflictBody': 'บัญชีนี้มีโรงงานบนคลาวด์อยู่แล้ว และเครื่องนี้มีโรงงานอีกชุด ต้องการเก็บชุดไหน? อีกชุดจะถูกแทนที่',
++  'ui.thisDevice': 'เครื่องนี้',
++  'ui.useCloud': 'ใช้เซฟบนคลาวด์',
++  'ui.useLocal': 'ใช้เซฟในเครื่องนี้',
++  'err.network': 'เชื่อมต่อไม่ได้ ลองอีกครั้ง',
++  'err.alreadyClaimed': 'รับรางวัลไปแล้ว',
++  'err.dailyCap': 'รับเพชรครบโควตาวันนี้แล้ว',
++  'err.badDay': 'ตรวจสอบวันที่ในเครื่อง',
++  'err.signInFailed': 'เข้าสู่ระบบไม่สำเร็จ ลองอีกครั้ง',
++  'err.paymentFailed': 'ชำระเงินไม่สำเร็จ',
++  'err.alreadyBought': 'คุณซื้อแพ็กเริ่มต้นไปแล้ว',
+ };
+diff --git a/src/online/config.ts b/src/online/config.ts
+new file mode 100644
+index 0000000..1271098
+--- /dev/null
++++ b/src/online/config.ts
+@@ -0,0 +1,33 @@
++/**
++ * Online features switch on only when the Supabase env vars are present
++ * (see .env.example). Without them the game runs fully offline as a guest —
++ * that's how the single-file / artifact build works.
++ */
++export const ONLINE = {
++  supabaseUrl: import.meta.env.VITE_SUPABASE_URL ?? '',
++  supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? '',
++  omisePublicKey: import.meta.env.VITE_OMISE_PUBLIC_KEY ?? '',
++  lineChannelId: import.meta.env.VITE_LINE_CHANNEL_ID ?? '',
++};
++
++export const onlineConfigured = !!(ONLINE.supabaseUrl && ONLINE.supabaseAnonKey);
++export const paymentsConfigured = onlineConfigured && !!ONLINE.omisePublicKey;
++export const lineConfigured = onlineConfigured && !!ONLINE.lineChannelId;
++
++/** is there a stored Supabase session? (sync check so the game can wait for server time) */
++export function hasStoredSession(): boolean {
++  if (!onlineConfigured) return false;
++  try {
++    for (let i = 0; i < localStorage.length; i++) {
++      const k = localStorage.key(i) ?? '';
++      if (k.startsWith('sb-') && k.endsWith('-auth-token')) return true;
++    }
++  } catch {
++    /* storage blocked */
++  }
++  return false;
++}
++
++export function siteUrl(): string {
++  return location.origin + location.pathname;
++}
+diff --git a/src/online/omise.ts b/src/online/omise.ts
+new file mode 100644
+index 0000000..9903553
+--- /dev/null
++++ b/src/online/omise.ts
+@@ -0,0 +1,62 @@
++import { ONLINE } from './config';
++
++/**
++ * Omise's hosted payment popup (OmiseCard). Card details never touch our code:
++ * the popup returns a one-time token (card) or source id (PromptPay, TrueMoney),
++ * which the create-charge edge function turns into a charge with the secret key.
++ */
++
++interface OmiseCardApi {
++  configure(opts: { publicKey: string }): void;
++  open(opts: {
++    amount: number;
++    currency: string;
++    frameLabel: string;
++    submitLabel: string;
++    defaultPaymentMethod: string;
++    otherPaymentMethods: string;
++    onCreateTokenSuccess: (nonce: string) => void;
++    onFormClosed?: () => void;
++  }): void;
++}
++
++declare global {
++  interface Window {
++    OmiseCard?: OmiseCardApi;
++  }
++}
++
++let loading: Promise<OmiseCardApi> | null = null;
++
++function loadOmise(): Promise<OmiseCardApi> {
++  if (window.OmiseCard) return Promise.resolve(window.OmiseCard);
++  if (!loading) {
++    loading = new Promise((resolve, reject) => {
++      const s = document.createElement('script');
++      s.src = 'https://cdn.omise.co/omise.js';
++      s.async = true;
++      s.onload = () => (window.OmiseCard ? resolve(window.OmiseCard) : reject(new Error('OmiseCard missing')));
++      s.onerror = () => {
++        loading = null;
++        reject(new Error('Could not load Omise'));
++      };
++      document.head.appendChild(s);
++    });
++  }
++  return loading;
++}
++
++export async function openOmiseCard(opts: { amount: number; frameLabel: string; submitLabel: string; onToken: (nonce: string) => void; onClose?: () => void }) {
++  const card = await loadOmise();
++  card.configure({ publicKey: ONLINE.omisePublicKey });
++  card.open({
++    amount: opts.amount,
++    currency: 'THB',
++    frameLabel: opts.frameLabel,
++    submitLabel: opts.submitLabel,
++    defaultPaymentMethod: 'credit_card',
++    otherPaymentMethods: 'promptpay,truemoney',
++    onCreateTokenSuccess: opts.onToken,
++    onFormClosed: opts.onClose,
++  });
++}
+diff --git a/src/online/online.ts b/src/online/online.ts
+new file mode 100644
+index 0000000..6cedbd2
+--- /dev/null
++++ b/src/online/online.ts
+@@ -0,0 +1,379 @@
++import type { SupabaseClient, User } from '@supabase/supabase-js';
++import { PACKS, type GemItemId, type PackId } from '../config/meta';
++import { migrate } from '../core/save';
++import type { GameState } from '../core/types';
++import type { Game, OnlineBridge } from '../game';
++import { ONLINE, lineConfigured, siteUrl } from './config';
++import { openOmiseCard } from './omise';
++
++export interface SaveSummary {
++  earned: number;
++  money: number;
++  prestige: number;
++  buildings: number;
++  savedAt: number;
++}
++
++export interface OnlineUi {
++  user: { id: string; email: string; name: string; provider: string } | null;
++  ready: boolean;
++  lastCloudSave: number | null;
++  emailSentTo: string | null;
++  conflict: { local: SaveSummary; cloud: SaveSummary } | null;
++  payment: { purchaseId: string; pack: PackId; qr: string | null; status: 'pending' | 'paid' | 'failed' | 'expired'; failure?: string } | null;
++}
++
++const ERRORS: Record<string, string> = {
++  not_enough_gems: 'err.noGems',
++  max_level: 'err.maxLevel',
++  already_claimed: 'err.alreadyClaimed',
++  daily_cap: 'err.dailyCap',
++  bad_day: 'err.badDay',
++  not_signed_in: 'err.signInRequired',
++};
++
++function errKey(message: string | undefined): string {
++  for (const k in ERRORS) if (message?.includes(k)) return ERRORS[k];
++  return 'err.network';
++}
++
++function summary(s: GameState, savedAt: number): SaveSummary {
++  return {
++    earned: s.prestige.lifetimeEarned,
++    money: s.money,
++    prestige: s.prestige.count,
++    buildings: s.buildings.length,
++    savedAt,
++  };
++}
++
++const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b) => b.toString(16).padStart(2, '0')).join('');
++
++/**
++ * Supabase-backed accounts, cloud saves (stamped with server time), server-side
++ * gems and Omise purchases. Created only when the env vars are configured.
++ */
++export class Online implements OnlineBridge {
++  ui: OnlineUi = { user: null, ready: false, lastCloudSave: null, emailSentTo: null, conflict: null, payment: null };
++  private user: User | null = null;
++  private saving = false;
++  private pendingCloud: { state: GameState; serverNow: number; savedAt: number } | null = null;
++  private pollTimer = 0;
++
++  private constructor(
++    private sb: SupabaseClient,
++    private game: Game,
++  ) {}
++
++  static async create(game: Game): Promise<Online> {
++    const { createClient } = await import('@supabase/supabase-js');
++    const sb = createClient(ONLINE.supabaseUrl, ONLINE.supabaseAnonKey, {
++      auth: { persistSession: true, autoRefreshToken: true, detectSessionInUrl: true, flowType: 'pkce' },
++    });
++    const o = new Online(sb, game);
++    game.online = o;
++    await o.init();
++    return o;
++  }
++
++  signedIn(): boolean {
++    return !!this.user;
++  }
++
++  private changed() {
++    this.game.emit();
++  }
++
++  private setUser(u: User | null) {
++    this.user = u;
++    this.ui.user = u
++      ? {
++          id: u.id,
++          email: u.email ?? '',
++          name: (u.user_metadata?.full_name as string) ?? (u.user_metadata?.name as string) ?? u.email ?? '',
++          provider: (u.user_metadata?.provider as string) ?? (u.app_metadata?.provider as string) ?? 'email',
++        }
++      : null;
++  }
++
++  // ------------------------------------------------------------------ startup
++
++  private async init() {
++    await this.finishLineSignIn();
++    const { data } = await this.sb.auth.getSession();
++    this.setUser(data.session?.user ?? null);
++
++    this.sb.auth.onAuthStateChange((_event, session) => {
++      const u = session?.user ?? null;
++      const changedUser = (u?.id ?? null) !== (this.user?.id ?? null);
++      this.setUser(u);
++      if (changedUser && u) void this.afterSignIn();
++      this.changed();
++    });
++
++    if (this.user) await this.afterSignIn();
++    else this.game.applyDeferredCatchUp();
++
++    this.resumePaymentFromUrl();
++    window.setInterval(() => void this.cloudSave(), 30_000);
++    document.addEventListener('visibilitychange', () => {
++      if (document.visibilityState === 'hidden') void this.cloudSave();
++    });
++    this.ui.ready = true;
++    this.changed();
++  }
++
++  /**
++   * Picks between the cloud save and this device's save, using SERVER time for
++   * offline progress (a player can't fast-forward by changing the device clock).
++   */
++  private async afterSignIn() {
++    await this.refreshProfile();
++    const { data, error } = await this.sb.rpc('load_game');
++    if (error) {
++      this.game.applyDeferredCatchUp();
++      this.game.toast(this.game.t('err.network'), 'error');
++      return;
++    }
++    const row = (data as { data: GameState | null; saved_at: string | null; server_now: string }[])?.[0];
++    const serverNow = Date.parse(row?.server_now ?? new Date().toISOString());
++    const local = this.game.state;
++
++    if (!row?.data) {
++      // first sign-in on this account: the guest save becomes the cloud save
++      this.game.applyDeferredCatchUp();
++      await this.cloudSave(true);
++      return;
++    }
++    const cloud = migrate(row.data);
++    if (!cloud) {
++      this.game.applyDeferredCatchUp();
++      return;
++    }
++    const savedAt = Date.parse(row.saved_at!);
++    const awayCloud = Math.max(0, (serverNow - savedAt) / 1000);
++    const sameRun = cloud.seed === local.seed && cloud.prestige.count === local.prestige.count;
++    const localIsFresh = local.prestige.lifetimeEarned < 500 && local.prestige.count === 0;
++
++    if (localIsFresh || (sameRun && cloud.time >= local.time - 1)) {
++      this.useCloud(cloud, awayCloud);
++    } else if (sameRun) {
++      // same run, this device got further (closed before the last cloud sync)
++      this.game.applyDeferredCatchUp(Math.max(0, awayCloud - (local.time - cloud.time)));
++      await this.cloudSave(true);
++    } else {
++      // two different games: let the player choose
++      this.pendingCloud = { state: cloud, serverNow, savedAt };
++      this.ui.conflict = { local: summary(local, local.lastSaved), cloud: summary(cloud, savedAt) };
++      this.changed();
++    }
++  }
++
++  private useCloud(cloud: GameState, awaySeconds: number) {
++    cloud.settings = { ...this.game.state.settings, ...cloud.settings };
++    cloud.gems = this.game.state.gems; // server balance, already fetched
++    cloud.boostUntil = Math.max(cloud.boostUntil, this.game.state.boostUntil);
++    this.game.replaceState(cloud, awaySeconds);
++    this.game.clearDeferredCatchUp();
++  }
++
++  resolveConflict(choice: 'cloud' | 'local') {
++    const p = this.pendingCloud;
++    this.ui.conflict = null;
++    this.pendingCloud = null;
++    if (!p) return;
++    if (choice === 'cloud') this.useCloud(p.state, Math.max(0, (p.serverNow - p.savedAt) / 1000));
++    else this.game.applyDeferredCatchUp();
++    void this.cloudSave(true);
++    this.changed();
++  }
++
++  // ------------------------------------------------------------------ profile, saves
++
++  async refreshProfile() {
++    if (!this.user) return;
++    const { data } = await this.sb.from('profiles').select('gems, boost_until').eq('id', this.user.id).single();
++    if (data) {
++      this.game.state.gems = data.gems;
++      if (data.boost_until) this.game.state.boostUntil = Math.max(this.game.state.boostUntil, Date.parse(data.boost_until));
++      this.changed();
++    }
++  }
++
++  async cloudSave(force = false) {
++    if (!this.user || this.saving || this.ui.conflict) return;
++    if (!force && document.visibilityState === 'hidden' && this.ui.lastCloudSave && Date.now() - this.ui.lastCloudSave < 5000) return;
++    this.saving = true;
++    try {
++      const { error } = await this.sb.rpc('save_game', { p_data: this.game.state });
++      if (!error) this.ui.lastCloudSave = Date.now();
++    } finally {
++      this.saving = false;
++    }
++  }
++
++  saveNow() {
++    void this.cloudSave(true);
++  }
++
++  // ------------------------------------------------------------------ auth
++
++  async signInEmail(email: string): Promise<string | null> {
++    const { error } = await this.sb.auth.signInWithOtp({ email, options: { emailRedirectTo: siteUrl() } });
++    if (error) return error.message;
++    this.ui.emailSentTo = email;
++    this.changed();
++    return null;
++  }
++
++  async signInGoogle() {
++    await this.sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: siteUrl() } });
++  }
++
++  signInLine() {
++    if (!lineConfigured) return;
++    const state = 'line.' + randomId();
++    const nonce = randomId();
++    sessionStorage.setItem('ote.line_state', JSON.stringify({ state, nonce }));
++    const redirect = new URL('line-callback.html', siteUrl()).href;
++    const q = new URLSearchParams({
++      response_type: 'code',
++      client_id: ONLINE.lineChannelId,
++      redirect_uri: redirect,
++      state,
++      scope: 'openid profile email',
++      nonce,
++    });
++    location.href = `https://access.line.me/oauth2/v2.1/authorize?${q}`;
++  }
++
++  /** LINE sent the player back (via line-callback.html): finish sign-in */
++  private async finishLineSignIn() {
++    let cb: { code: string | null; state: string | null; error: string | null } | null = null;
++    let saved: { state: string; nonce: string } | null = null;
++    try {
++      cb = JSON.parse(sessionStorage.getItem('ote.line_cb') ?? 'null');
++      saved = JSON.parse(sessionStorage.getItem('ote.line_state') ?? 'null');
++      sessionStorage.removeItem('ote.line_cb');
++      sessionStorage.removeItem('ote.line_state');
++    } catch {
++      return;
++    }
++    if (!cb) return;
++    if (cb.error || !cb.code || !saved || cb.state !== saved.state) {
++      this.game.toast(this.game.t('err.signInFailed'), 'error');
++      return;
++    }
++    const { data, error } = await this.sb.functions.invoke('line-auth', {
++      body: { code: cb.code, redirect_uri: new URL('line-callback.html', siteUrl()).href, nonce: saved.nonce },
++    });
++    if (error || !data?.token_hash) {
++      this.game.toast(this.game.t('err.signInFailed'), 'error');
++      return;
++    }
++    await this.sb.auth.verifyOtp({ token_hash: data.token_hash, type: 'magiclink' });
++  }
++
++  async signOut() {
++    await this.cloudSave(true);
++    await this.sb.auth.signOut();
++    this.setUser(null);
++    this.game.state.gems = 0; // gems belong to the account
++    this.changed();
++  }
++
++  // ------------------------------------------------------------------ gems (OnlineBridge)
++
++  async spendGems(item: GemItemId) {
++    const { data, error } = await this.sb.rpc('spend_gems', { p_item: item });
++    if (error) return { ok: false as const, reason: errKey(error.message) };
++    await this.cloudSave(true);
++    return { ok: true as const, gems: data as number };
++  }
++
++  async claimDaily(day: string, key: string) {
++    const { data, error } = await this.sb.rpc('claim_daily_gems', { p_day: day, p_key: key });
++    if (error) return { ok: false as const, reason: errKey(error.message) };
++    return { ok: true as const, gems: data as number };
++  }
++
++  // ------------------------------------------------------------------ purchases
++
++  async buyPack(pack: PackId) {
++    if (!this.user) {
++      this.game.openPanel('account');
++      return;
++    }
++    const def = PACKS[pack];
++    await openOmiseCard({
++      amount: def.priceThb * 100,
++      frameLabel: 'Ore to Empire',
++      submitLabel: this.game.t('ui.pay'),
++      onToken: (nonce) => void this.charge(pack, nonce),
++    });
++  }
++
++  private async charge(pack: PackId, nonce: string) {
++    this.game.ui.busy = true;
++    this.changed();
++    const { data, error } = await this.sb.functions.invoke('create-charge', { body: { pack, nonce, return_uri: siteUrl() } });
++    this.game.ui.busy = false;
++    if (error || !data?.purchase_id) {
++      const msg = (data as { error?: string })?.error === 'already_bought' ? 'err.alreadyBought' : 'err.paymentFailed';
++      this.game.toast(this.game.t(msg), 'error');
++      this.changed();
++      return;
++    }
++    if (data.status === 'failed') {
++      this.game.toast(`${this.game.t('err.paymentFailed')} ${data.failure ?? ''}`, 'error');
++      return;
++    }
++    if (data.authorize_uri) {
++      // 3-D Secure or TrueMoney: Omise sends the player back with ?purchase=<id>
++      location.href = data.authorize_uri;
++      return;
++    }
++    this.ui.payment = { purchaseId: data.purchase_id, pack, qr: data.qr_uri ?? null, status: 'pending' };
++    this.pollPurchase();
++    this.changed();
++  }
++
++  private resumePaymentFromUrl() {
++    const url = new URL(location.href);
++    const id = url.searchParams.get('purchase');
++    if (!id || !this.user) return;
++    url.searchParams.delete('purchase');
++    history.replaceState(null, '', url.toString());
++    this.ui.payment = { purchaseId: id, pack: 'pack_s', qr: null, status: 'pending' };
++    this.pollPurchase();
++  }
++
++  private pollPurchase() {
++    window.clearInterval(this.pollTimer);
++    const started = Date.now();
++    this.pollTimer = window.setInterval(async () => {
++      const p = this.ui.payment;
++      if (!p || Date.now() - started > 15 * 60_000) {
++        window.clearInterval(this.pollTimer);
++        return;
++      }
++      const { data } = await this.sb.from('purchases').select('status, pack, failure').eq('id', p.purchaseId).single();
++      if (!data || data.status === 'pending') return;
++      window.clearInterval(this.pollTimer);
++      this.ui.payment = { ...p, pack: data.pack as PackId, status: data.status, failure: data.failure ?? undefined };
++      if (data.status === 'paid') {
++        await this.refreshProfile();
++        this.game.play('coins');
++        this.game.toast(this.game.t('ui.paymentDone', { gems: PACKS[data.pack as PackId]?.gems ?? 0 }), 'success');
++        await this.cloudSave(true);
++      }
++      this.changed();
++    }, 3000);
++  }
++
++  closePayment() {
++    if (this.ui.payment?.status !== 'pending') window.clearInterval(this.pollTimer);
++    this.ui.payment = null;
++    this.changed();
++  }
++}
+diff --git a/src/ui/App.tsx b/src/ui/App.tsx
+index 4624423..7ec34de 100644
+--- a/src/ui/App.tsx
++++ b/src/ui/App.tsx
+@@ -1,5 +1,6 @@
+ import { useEffect, useRef, useState } from 'react';
+ import { Game } from '../game';
++import { hasStoredSession, onlineConfigured } from '../online/config';
+ import { Renderer } from '../render/renderer';
+ import { BuildDrawer } from './BuildDrawer';
+ import { GameContext } from './hooks';
+@@ -8,15 +9,24 @@ import { Inspector } from './Inspector';
+ import { OfflineModal, SettingsPanel, StatsPanel, UpgradesPanel } from './Panels';
+ import { ContractsPanel, DailyPanel, FleetPanel, MarketsPanel, MenuSheet, PlotSheet, PrestigePanel, ResearchPanel } from './MetaPanels';
+ import { ShopPanel } from './ShopPanel';
++import { AccountPanel, ConflictModal, PaymentModal } from './OnlinePanels';
+ 
+ export function App() {
+-  const [game] = useState(() => new Game());
++  const [game] = useState(() => new Game(undefined, { deferCatchUp: hasStoredSession() }));
+   const canvasHost = useRef<HTMLDivElement>(null);
+ 
+   useEffect(() => {
+     document.documentElement.lang = game.state.settings.lang;
+     (window as unknown as { __game: Game }).__game = game; // handy for debugging in the console
+     game.start();
++    if (onlineConfigured) {
++      // a stuck network must not hold back offline progress forever
++      const fallback = window.setTimeout(() => game.applyDeferredCatchUp(), 8000);
++      void import('../online/online')
++        .then(({ Online }) => Online.create(game))
++        .catch(() => game.applyDeferredCatchUp())
++        .finally(() => window.clearTimeout(fallback));
++    }
+     const renderer = new Renderer(game);
+     (window as unknown as { __renderer: Renderer }).__renderer = renderer;
+     if (canvasHost.current) void renderer.mount(canvasHost.current);
+@@ -61,6 +71,9 @@ export function App() {
+         <PrestigePanel />
+         <ShopPanel />
+         <MenuSheet />
++        <AccountPanel />
++        <PaymentModal />
++        <ConflictModal />
+         <OfflineModal />
+       </div>
+     </GameContext.Provider>
+diff --git a/src/ui/OnlinePanels.tsx b/src/ui/OnlinePanels.tsx
+new file mode 100644
+index 0000000..74394b7
+--- /dev/null
++++ b/src/ui/OnlinePanels.tsx
+@@ -0,0 +1,212 @@
++import { useState } from 'react';
++import { PACKS, PACK_ORDER } from '../config/meta';
++import { fmtMoney } from '../i18n';
++import { lineConfigured, paymentsConfigured } from '../online/config';
++import type { Online, SaveSummary } from '../online/online';
++import { useGame, useT } from './hooks';
++import { GemIcon } from './nav';
++import { Modal } from './Panels';
++
++function useOnline(): Online | null {
++  const game = useGame();
++  return (game.online as Online | null) ?? null;
++}
++
++// ============================================================================ account
++
++export function AccountPanel() {
++  const game = useGame();
++  const t = useT();
++  const online = useOnline();
++  const [email, setEmail] = useState('');
++  const [error, setError] = useState<string | null>(null);
++  if (game.ui.panel !== 'account') return null;
++  const user = online?.ui.user;
++
++  return (
++    <Modal title={t('ui.account')} onClose={() => game.openPanel('none')}>
++      {!online && <p className="small dim">{t('ui.connecting')}</p>}
++      {online && user && (
++        <>
++          <div className="kv">
++            <span>{t('ui.signedInAs')}</span>
++            <strong>{user.name || user.email}</strong>
++            <span>{t('ui.gems')}</span>
++            <span className="mono">
++              <GemIcon /> {game.state.gems}
++            </span>
++            <span>{t('ui.cloudSave')}</span>
++            <span className="small">
++              {online.ui.lastCloudSave ? t('ui.savedAt', { time: new Date(online.ui.lastCloudSave).toLocaleTimeString() }) : t('ui.notYet')}
++            </span>
++          </div>
++          <p className="small dim">{t('ui.cloudHint')}</p>
++          <button className="btn ghost full" onClick={() => void online.signOut()}>
++            {t('ui.signOut')}
++          </button>
++        </>
++      )}
++      {online && !user && (
++        <>
++          <p className="small">{t('ui.signInWhy')}</p>
++          {online.ui.emailSentTo ? (
++            <p className="good small">{t('ui.emailSent', { email: online.ui.emailSentTo })}</p>
++          ) : (
++            <form
++              className="email-form"
++              onSubmit={async (e) => {
++                e.preventDefault();
++                setError(null);
++                const err = await online.signInEmail(email.trim());
++                if (err) setError(err);
++              }}
++            >
++              <label htmlFor="signin-email" className="small dim">
++                {t('ui.email')}
++              </label>
++              <div className="row">
++                <input id="signin-email" type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" />
++                <button className="btn primary" type="submit">
++                  {t('ui.sendLink')}
++                </button>
++              </div>
++              {error && <p className="bad small">{error}</p>}
++            </form>
++          )}
++          <div className="divider small dim">{t('ui.or')}</div>
++          <button className="btn full social google" onClick={() => void online.signInGoogle()}>
++            <span className="g">G</span> {t('ui.withGoogle')}
++          </button>
++          {lineConfigured && (
++            <button className="btn full social line" onClick={() => online.signInLine()}>
++              <span className="l">LINE</span> {t('ui.withLine')}
++            </button>
++          )}
++          <p className="small dim">{t('ui.guestNote')}</p>
++        </>
++      )}
++    </Modal>
++  );
++}
++
++// ============================================================================ gem packs (inside the shop)
++
++export function GemPacks() {
++  const game = useGame();
++  const t = useT();
++  const online = useOnline();
++  if (!paymentsConfigured) return null;
++  const signedIn = !!online?.ui.user;
++  return (
++    <>
++      <div className="section-label">{t('ui.buyGems')}</div>
++      <div className="packs">
++        {PACK_ORDER.map((id) => {
++          const p = PACKS[id];
++          return (
++            <button key={id} className={`pack ${id === 'starter' ? 'starter' : ''}`} disabled={!online || game.ui.busy} onClick={() => void online?.buyPack(id)}>
++              {id === 'starter' && <span className="pack-tag">{t('ui.starter')}</span>}
++              <span className="pack-gems mono">
++                <GemIcon size={18} /> {p.gems.toLocaleString()}
++              </span>
++              {p.bonusPct > 0 && <span className="small good">+{p.bonusPct}%</span>}
++              {p.boostHours && <span className="small good">{t('ui.plusBoost', { h: p.boostHours })}</span>}
++              <span className="pack-price mono">฿{p.priceThb}</span>
++            </button>
++          );
++        })}
++      </div>
++      {!signedIn && (
++        <button className="btn ghost full" onClick={() => game.openPanel('account')}>
++          {t('ui.signInToBuy')}
++        </button>
++      )}
++      <p className="small dim">{t('ui.payMethods')}</p>
++    </>
++  );
++}
++
++// ============================================================================ PromptPay QR / payment status
++
++export function PaymentModal() {
++  const t = useT();
++  const online = useOnline();
++  const p = online?.ui.payment;
++  if (!online || !p) return null;
++  const pack = PACKS[p.pack];
++  return (
++    <div className="modal-backdrop">
++      <div className="modal welcome" role="dialog">
++        <h2>{t('ui.payment')}</h2>
++        {p.status === 'pending' && (
++          <>
++            {p.qr ? (
++              <>
++                <p className="small dim">{t('ui.scanQr', { amount: pack.priceThb })}</p>
++                <img className="qr" src={p.qr} alt="PromptPay QR" width={240} height={240} />
++              </>
++            ) : (
++              <p className="small dim">{t('ui.waitingPayment')}</p>
++            )}
++            <p className="small dim">{t('ui.waitingConfirm')}</p>
++          </>
++        )}
++        {p.status === 'paid' && <p className="good">{t('ui.paymentDone', { gems: pack.gems })}</p>}
++        {(p.status === 'failed' || p.status === 'expired') && (
++          <p className="bad">
++            {t('err.paymentFailed')} {p.failure ?? ''}
++          </p>
++        )}
++        <button className="btn primary big" onClick={() => online.closePayment()}>
++          {p.status === 'pending' ? t('ui.close') : t('ui.done')}
++        </button>
++      </div>
++    </div>
++  );
++}
++
++// ============================================================================ which save to keep
++
++function SaveCard({ title, s, onPick, label }: { title: string; s: SaveSummary; onPick: () => void; label: string }) {
++  const t = useT();
++  return (
++    <div className="save-card">
++      <strong>{title}</strong>
++      <span className="small dim">{new Date(s.savedAt).toLocaleString()}</span>
++      <div className="kv">
++        <span>{t('ui.totalEarned')}</span>
++        <span className="mono">{fmtMoney(s.earned)}</span>
++        <span>{t('ui.money')}</span>
++        <span className="mono">{fmtMoney(s.money)}</span>
++        <span>{t('ui.prestige')}</span>
++        <span className="mono">{s.prestige}</span>
++      </div>
++      <button className="btn primary full" onClick={onPick}>
++        {label}
++      </button>
++    </div>
++  );
++}
++
++export function ConflictModal() {
++  const t = useT();
++  const online = useOnline();
++  const c = online?.ui.conflict;
++  if (!online || !c) return null;
++  return (
++    <div className="modal-backdrop">
++      <div className="modal" role="dialog">
++        <div className="sheet-head">
++          <h2>{t('ui.conflictTitle')}</h2>
++        </div>
++        <div className="modal-body">
++          <p className="small dim">{t('ui.conflictBody')}</p>
++          <div className="save-cards">
++            <SaveCard title={t('ui.cloudSave')} s={c.cloud} label={t('ui.useCloud')} onPick={() => online.resolveConflict('cloud')} />
++            <SaveCard title={t('ui.thisDevice')} s={c.local} label={t('ui.useLocal')} onPick={() => online.resolveConflict('local')} />
++          </div>
++        </div>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/ui/ShopPanel.tsx b/src/ui/ShopPanel.tsx
+index d3325bd..4568c73 100644
+--- a/src/ui/ShopPanel.tsx
++++ b/src/ui/ShopPanel.tsx
+@@ -1,5 +1,6 @@
+ import { useGame, useT } from './hooks';
+ import { GemItems } from './MetaPanels';
++import { GemPacks } from './OnlinePanels';
+ import { GemIcon } from './nav';
+ import { Modal } from './Panels';
+ 
+@@ -20,6 +21,7 @@ export function ShopPanel() {
+     >
+       <GemItems />
+       <p className="small dim">{t('ui.gemsFree')}</p>
++      <GemPacks />
+     </Modal>
+   );
+ }
+diff --git a/src/ui/nav.tsx b/src/ui/nav.tsx
+index 708c907..6df9ad0 100644
+--- a/src/ui/nav.tsx
++++ b/src/ui/nav.tsx
+@@ -3,6 +3,7 @@ import { dailyClaimableCount } from '../core/daily';
+ import { metaUnlocked } from '../core/quests';
+ import type { GameState } from '../core/types';
+ import type { Panel } from '../game';
++import { onlineConfigured } from '../online/config';
+ 
+ export interface NavEntry {
+   panel: Panel;
+@@ -24,6 +25,7 @@ export const NAV: NavEntry[] = [
+     badge: (s) => s.stats.totalEarned >= PRESTIGE.minRunEarned,
+   },
+   { panel: 'shop', label: 'ui.shop', visible: () => true },
++  { panel: 'account', label: 'ui.account', visible: () => onlineConfigured },
+   { panel: 'upgrades', label: 'ui.upgrades', visible: () => true },
+   { panel: 'stats', label: 'ui.stats', visible: () => true },
+   { panel: 'settings', label: 'ui.settings', visible: () => true },
+diff --git a/src/ui/styles.css b/src/ui/styles.css
+index b1d2235..2664682 100644
+--- a/src/ui/styles.css
++++ b/src/ui/styles.css
+@@ -1279,3 +1279,154 @@ select {
+ .sheet {
+   background: var(--panel-solid);
+ }
++
++/* ============================================================ Phase 4 */
++
++.email-form {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++  margin: 10px 0;
++}
++.email-form .row {
++  display: flex;
++  gap: 8px;
++}
++.email-form input {
++  flex: 1;
++  min-width: 0;
++  font: inherit;
++  color: var(--text);
++  background: var(--panel-2);
++  border: 1px solid var(--edge-2);
++  border-radius: 10px;
++  padding: 8px 12px;
++}
++.email-form input:focus-visible,
++.btn:focus-visible,
++.icon-btn:focus-visible,
++select:focus-visible {
++  outline: 2px solid var(--blue);
++  outline-offset: 2px;
++}
++.divider {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  margin: 12px 0 0;
++}
++.divider::before,
++.divider::after {
++  content: '';
++  flex: 1;
++  height: 1px;
++  background: var(--edge);
++}
++.btn.social {
++  justify-content: flex-start;
++  gap: 10px;
++}
++.btn.social .g {
++  width: 22px;
++  height: 22px;
++  border-radius: 50%;
++  background: #fff;
++  color: #4285f4;
++  font-weight: 700;
++  display: inline-grid;
++  place-items: center;
++  font-size: 13px;
++}
++.btn.social.line {
++  background: #06c755;
++  border-color: #06c755;
++  color: #fff;
++}
++.btn.social .l {
++  font-weight: 800;
++  font-size: 11px;
++  letter-spacing: 0.04em;
++  padding: 2px 5px;
++  border-radius: 5px;
++  background: #fff;
++  color: #06c755;
++}
++.packs {
++  display: grid;
++  grid-template-columns: repeat(auto-fill, minmax(130px, 1fr));
++  gap: 8px;
++}
++.pack {
++  position: relative;
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  gap: 4px;
++  padding: 14px 8px 10px;
++  border-radius: 12px;
++  border: 1px solid var(--edge);
++  background: var(--panel-2);
++}
++.pack:hover:not(:disabled) {
++  border-color: #59d2ff;
++}
++.pack.starter {
++  border-color: var(--amber);
++  grid-column: 1 / -1;
++}
++.pack-tag {
++  position: absolute;
++  top: -9px;
++  padding: 1px 8px;
++  border-radius: 999px;
++  background: var(--amber);
++  color: #1b1405;
++  font-size: 11px;
++  font-weight: 700;
++}
++.pack-gems {
++  display: inline-flex;
++  align-items: center;
++  gap: 5px;
++  font-size: 18px;
++  font-weight: 700;
++  color: #bdf0ff;
++}
++.pack-price {
++  margin-top: 4px;
++  font-weight: 700;
++  color: var(--amber);
++}
++.qr {
++  background: #fff;
++  border-radius: 12px;
++  padding: 8px;
++  margin: 8px auto;
++}
++.save-cards {
++  display: grid;
++  grid-template-columns: 1fr 1fr;
++  gap: 10px;
++}
++.save-card {
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++  padding: 12px;
++  border-radius: 12px;
++  border: 1px solid var(--edge);
++  background: var(--panel-2);
++}
++@media (max-width: 520px) {
++  .save-cards {
++    grid-template-columns: 1fr;
++  }
++}
++@media (prefers-reduced-motion: reduce) {
++  *,
++  *::before,
++  *::after {
++    animation-duration: 0.001ms !important;
++    transition-duration: 0.001ms !important;
++  }
++}
+diff --git a/src/vite-env.d.ts b/src/vite-env.d.ts
+new file mode 100644
+index 0000000..139a580
+--- /dev/null
++++ b/src/vite-env.d.ts
+@@ -0,0 +1,12 @@
++/// <reference types="vite/client" />
++
++interface ImportMetaEnv {
++  readonly VITE_SUPABASE_URL?: string;
++  readonly VITE_SUPABASE_ANON_KEY?: string;
++  readonly VITE_OMISE_PUBLIC_KEY?: string;
++  readonly VITE_LINE_CHANNEL_ID?: string;
++}
++
++interface ImportMeta {
++  readonly env: ImportMetaEnv;
++}
+diff --git a/supabase/functions/_shared/packs.ts b/supabase/functions/_shared/packs.ts
+new file mode 100644
+index 0000000..6da1709
+--- /dev/null
++++ b/supabase/functions/_shared/packs.ts
+@@ -0,0 +1,17 @@
++// Server-side price list. Mirrors src/config/meta.ts (PACKS) — THIS copy is the
++// one that decides what a customer pays and receives. Keep both in sync.
++
++export interface Pack {
++  gems: number; // total gems credited (bonus included)
++  satang: number; // price in satang (฿1 = 100)
++  boostHours: number;
++  oncePerAccount: boolean;
++}
++
++export const PACKS: Record<string, Pack> = {
++  starter: { gems: 500, satang: 9900, boostHours: 24, oncePerAccount: true },
++  pack_s: { gems: 100, satang: 3500, boostHours: 0, oncePerAccount: false },
++  pack_m: { gems: 550, satang: 17900, boostHours: 0, oncePerAccount: false },
++  pack_l: { gems: 1200, satang: 34900, boostHours: 0, oncePerAccount: false },
++  pack_xl: { gems: 3250, satang: 89900, boostHours: 0, oncePerAccount: false },
++};
+diff --git a/supabase/functions/_shared/util.ts b/supabase/functions/_shared/util.ts
+new file mode 100644
+index 0000000..b840bb3
+--- /dev/null
++++ b/supabase/functions/_shared/util.ts
+@@ -0,0 +1,52 @@
++import { createClient, type SupabaseClient } from 'jsr:@supabase/supabase-js@2';
++
++// Restrict to your site in production via the ALLOWED_ORIGIN secret.
++const ORIGIN = Deno.env.get('ALLOWED_ORIGIN') ?? '*';
++
++export const cors = {
++  'Access-Control-Allow-Origin': ORIGIN,
++  'Access-Control-Allow-Headers': 'authorization, x-client-info, apikey, content-type',
++  'Access-Control-Allow-Methods': 'POST, OPTIONS',
++};
++
++export function json(body: unknown, status = 200): Response {
++  return new Response(JSON.stringify(body), { status, headers: { ...cors, 'Content-Type': 'application/json' } });
++}
++
++/** service-role client: bypasses RLS — server code only */
++export function admin(): SupabaseClient {
++  return createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_SERVICE_ROLE_KEY')!, {
++    auth: { persistSession: false, autoRefreshToken: false },
++  });
++}
++
++/** the signed-in user making this request, or null */
++export async function requestUser(req: Request) {
++  const auth = req.headers.get('Authorization');
++  if (!auth) return null;
++  const client = createClient(Deno.env.get('SUPABASE_URL')!, Deno.env.get('SUPABASE_ANON_KEY')!, {
++    global: { headers: { Authorization: auth } },
++    auth: { persistSession: false },
++  });
++  const { data } = await client.auth.getUser();
++  return data.user ?? null;
++}
++
++const OMISE_API = 'https://api.omise.co';
++
++/** call the Omise REST API with the secret key (form-encoded, like their docs) */
++export async function omise(path: string, params?: Record<string, string>, method = params ? 'POST' : 'GET') {
++  const key = Deno.env.get('OMISE_SECRET_KEY');
++  if (!key) throw new Error('OMISE_SECRET_KEY is not set');
++  const res = await fetch(`${OMISE_API}${path}`, {
++    method,
++    headers: {
++      Authorization: 'Basic ' + btoa(key + ':'),
++      ...(params ? { 'Content-Type': 'application/x-www-form-urlencoded' } : {}),
++    },
++    body: params ? new URLSearchParams(params) : undefined,
++  });
++  const data = await res.json();
++  if (!res.ok || data.object === 'error') throw new Error(`omise ${data.code ?? res.status}: ${data.message ?? ''}`);
++  return data;
++}
+diff --git a/supabase/functions/create-charge/index.ts b/supabase/functions/create-charge/index.ts
+new file mode 100644
+index 0000000..2defb4c
+--- /dev/null
++++ b/supabase/functions/create-charge/index.ts
+@@ -0,0 +1,87 @@
++// POST { pack, nonce, return_uri }
++//   nonce: a card token (tokn_…) or a payment source (src_…) from OmiseCard / Omise.js
++// Creates a pending purchase and an Omise charge. Gems are NOT credited here —
++// only the omise-webhook function credits them, after re-checking the charge.
++//
++// Returns { purchase_id, status, authorize_uri?, qr_uri? }
++//   authorize_uri → redirect the player (3-D Secure, TrueMoney)
++//   qr_uri        → show the PromptPay QR and poll the purchase
++
++import { PACKS } from '../_shared/packs.ts';
++import { admin, cors, json, omise, requestUser } from '../_shared/util.ts';
++
++Deno.serve(async (req) => {
++  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
++  if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
++
++  const user = await requestUser(req);
++  if (!user) return json({ error: 'not_signed_in' }, 401);
++
++  let body: { pack?: string; nonce?: string; return_uri?: string };
++  try {
++    body = await req.json();
++  } catch {
++    return json({ error: 'bad_json' }, 400);
++  }
++  const pack = body.pack ? PACKS[body.pack] : undefined;
++  const nonce = body.nonce ?? '';
++  if (!pack) return json({ error: 'unknown_pack' }, 400);
++  if (!/^(tokn|src)_[A-Za-z0-9_]+$/.test(nonce)) return json({ error: 'bad_nonce' }, 400);
++
++  // only return to our own site
++  const site = Deno.env.get('SITE_URL');
++  let returnUri = body.return_uri ?? site ?? '';
++  if (site && !returnUri.startsWith(site)) returnUri = site;
++
++  const db = admin();
++  if (pack.oncePerAccount) {
++    const { data: prof } = await db.from('profiles').select('starter_bought').eq('id', user.id).single();
++    if (prof?.starter_bought) return json({ error: 'already_bought' }, 409);
++  }
++
++  const { data: purchase, error } = await db
++    .from('purchases')
++    .insert({ user_id: user.id, pack: body.pack, gems: pack.gems, boost_hours: pack.boostHours, amount_satang: pack.satang })
++    .select('id')
++    .single();
++  if (error || !purchase) return json({ error: 'db_error' }, 500);
++
++  const sep = returnUri.includes('?') ? '&' : '?';
++  const params: Record<string, string> = {
++    amount: String(pack.satang),
++    currency: 'thb',
++    return_uri: `${returnUri}${sep}purchase=${purchase.id}`,
++    'metadata[purchase_id]': purchase.id,
++    'metadata[user_id]': user.id,
++    'metadata[pack]': body.pack!,
++    description: `Ore to Empire ${body.pack}`,
++  };
++  if (nonce.startsWith('tokn_')) params.card = nonce;
++  else params.source = nonce;
++
++  try {
++    const charge = await omise('/charges', params);
++    const qr = charge.source?.scannable_code?.image?.download_uri ?? null;
++    const failed = charge.status === 'failed';
++    await db
++      .from('purchases')
++      .update({
++        charge_id: charge.id,
++        qr_uri: qr,
++        authorize_uri: charge.authorize_uri ?? null,
++        status: failed ? 'failed' : 'pending',
++        failure: failed ? `${charge.failure_code}: ${charge.failure_message}` : null,
++      })
++      .eq('id', purchase.id);
++    return json({
++      purchase_id: purchase.id,
++      status: failed ? 'failed' : charge.status,
++      authorize_uri: charge.authorize_uri ?? null,
++      qr_uri: qr,
++      failure: failed ? charge.failure_message : null,
++    });
++  } catch (e) {
++    await db.from('purchases').update({ status: 'failed', failure: String(e) }).eq('id', purchase.id);
++    return json({ error: 'charge_failed', detail: String(e) }, 502);
++  }
++});
+diff --git a/supabase/functions/line-auth/index.ts b/supabase/functions/line-auth/index.ts
+new file mode 100644
+index 0000000..1ff200c
+--- /dev/null
++++ b/supabase/functions/line-auth/index.ts
+@@ -0,0 +1,75 @@
++// LINE Login → Supabase session.
++//
++// POST { code, redirect_uri, nonce }
++// 1. Exchange the LINE authorization code for tokens.
++// 2. Verify the ID token with LINE (checks signature, audience, expiry and our nonce).
++// 3. Find or create the Supabase user for this LINE account.
++// 4. Mint a one-time magic-link token; the browser exchanges it with
++//    supabase.auth.verifyOtp({ token_hash, type: 'magiclink' }) for a normal session.
++//
++// Deploy with:  supabase functions deploy line-auth --no-verify-jwt
++// Secrets: LINE_CHANNEL_ID, LINE_CHANNEL_SECRET, SITE_URL
++
++import { admin, cors, json } from '../_shared/util.ts';
++
++const CHANNEL_ID = Deno.env.get('LINE_CHANNEL_ID') ?? '';
++const CHANNEL_SECRET = Deno.env.get('LINE_CHANNEL_SECRET') ?? '';
++// LINE only shares an email if your channel has the email permission. Players
++// without one get a stable placeholder address that is never mailed.
++const PLACEHOLDER_DOMAIN = Deno.env.get('LINE_PLACEHOLDER_EMAIL_DOMAIN') ?? 'line-users.example.com';
++
++Deno.serve(async (req) => {
++  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
++  if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
++  if (!CHANNEL_ID || !CHANNEL_SECRET) return json({ error: 'line_not_configured' }, 500);
++
++  let body: { code?: string; redirect_uri?: string; nonce?: string };
++  try {
++    body = await req.json();
++  } catch {
++    return json({ error: 'bad_json' }, 400);
++  }
++  const { code, redirect_uri, nonce } = body;
++  if (!code || !redirect_uri || !nonce) return json({ error: 'missing_params' }, 400);
++  const site = Deno.env.get('SITE_URL');
++  if (site && !redirect_uri.startsWith(site)) return json({ error: 'bad_redirect' }, 400);
++
++  // 1. code → tokens
++  const tokenRes = await fetch('https://api.line.me/oauth2/v2.1/token', {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
++    body: new URLSearchParams({ grant_type: 'authorization_code', code, redirect_uri, client_id: CHANNEL_ID, client_secret: CHANNEL_SECRET }),
++  });
++  const tokens = await tokenRes.json();
++  if (!tokenRes.ok || !tokens.id_token) return json({ error: 'line_token_failed', detail: tokens.error_description ?? tokens.error }, 400);
++
++  // 2. verify the ID token (LINE checks signature/expiry/audience/nonce for us)
++  const verifyRes = await fetch('https://api.line.me/oauth2/v2.1/verify', {
++    method: 'POST',
++    headers: { 'Content-Type': 'application/x-www-form-urlencoded' },
++    body: new URLSearchParams({ id_token: tokens.id_token, client_id: CHANNEL_ID, nonce }),
++  });
++  const claims = await verifyRes.json();
++  if (!verifyRes.ok || !claims.sub) return json({ error: 'line_verify_failed', detail: claims.error_description ?? claims.error }, 400);
++
++  const lineSub: string = claims.sub;
++  const email: string = (claims.email as string | undefined)?.toLowerCase() ?? `${lineSub.toLowerCase()}@${PLACEHOLDER_DOMAIN}`;
++
++  // 3. find or create the user
++  const db = admin();
++  const created = await db.auth.admin.createUser({
++    email,
++    email_confirm: true,
++    user_metadata: { full_name: claims.name ?? 'LINE user', avatar_url: claims.picture ?? null, provider: 'line' },
++    app_metadata: { line_sub: lineSub },
++  });
++  // "already registered" is fine — the magic link below signs into the existing account
++  if (created.error && !/already|exists|registered/i.test(created.error.message)) {
++    return json({ error: 'create_user_failed', detail: created.error.message }, 500);
++  }
++
++  // 4. one-time token for the browser
++  const link = await db.auth.admin.generateLink({ type: 'magiclink', email });
++  if (link.error || !link.data.properties?.hashed_token) return json({ error: 'link_failed', detail: link.error?.message }, 500);
++  return json({ token_hash: link.data.properties.hashed_token });
++});
+diff --git a/supabase/functions/omise-webhook/index.ts b/supabase/functions/omise-webhook/index.ts
+new file mode 100644
+index 0000000..d460c3f
+--- /dev/null
++++ b/supabase/functions/omise-webhook/index.ts
+@@ -0,0 +1,46 @@
++// Omise posts events here (set the URL in the Omise dashboard → Webhooks).
++// We never trust the payload: for charge.complete we re-fetch the charge from
++// Omise with our secret key and only then credit gems (idempotently).
++//
++// Deploy with:  supabase functions deploy omise-webhook --no-verify-jwt
++// (Omise can't send a Supabase JWT; security comes from re-fetching the charge.)
++
++import { admin, json, omise } from '../_shared/util.ts';
++
++Deno.serve(async (req) => {
++  if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
++  let event: { key?: string; data?: { id?: string; object?: string } };
++  try {
++    event = await req.json();
++  } catch {
++    return json({ ok: true }); // ignore junk
++  }
++  const chargeId = event.data?.object === 'charge' ? event.data.id : undefined;
++  if (!chargeId || !/^chrg_[A-Za-z0-9_]+$/.test(chargeId)) return json({ ok: true, ignored: event.key });
++
++  let charge;
++  try {
++    charge = await omise(`/charges/${chargeId}`);
++  } catch (e) {
++    // 5xx → Omise retries later
++    return json({ error: String(e) }, 502);
++  }
++
++  const purchaseId: string | undefined = charge.metadata?.purchase_id;
++  if (!purchaseId) return json({ ok: true, ignored: 'no purchase id' });
++
++  const db = admin();
++  if (charge.status === 'successful' && charge.paid) {
++    const { error } = await db.rpc('credit_purchase', { p_purchase: purchaseId, p_charge: charge.id });
++    if (error) return json({ error: error.message }, 500);
++    return json({ ok: true, credited: purchaseId });
++  }
++  if (charge.status === 'failed' || charge.status === 'expired') {
++    await db
++      .from('purchases')
++      .update({ status: charge.status, failure: charge.failure_message ?? null })
++      .eq('id', purchaseId)
++      .eq('status', 'pending');
++  }
++  return json({ ok: true, status: charge.status });
++});
+diff --git a/supabase/migrations/20261006000000_init.sql b/supabase/migrations/20261006000000_init.sql
+new file mode 100644
+index 0000000..a21e627
+--- /dev/null
++++ b/supabase/migrations/20261006000000_init.sql
+@@ -0,0 +1,215 @@
++-- Ore to Empire — Phase 4 schema
++-- Run with `supabase db push` (or paste into the SQL editor).
++--
++-- Principles
++--  * Clients can READ their own rows but never write gems or purchases directly.
++--  * Gems change only through SECURITY DEFINER functions:
++--      spend_gems         (client, checks price + balance server-side)
++--      claim_daily_gems   (client, max 25 gems per day, each mission once)
++--      credit_purchase    (service role only — called by the Omise webhook)
++--  * Saves are stamped with the SERVER clock, which is what offline progress uses
++--    for signed-in players.
++
++-- ---------------------------------------------------------------- tables
++
++create table if not exists public.profiles (
++  id uuid primary key references auth.users on delete cascade,
++  gems integer not null default 0 check (gems >= 0),
++  boost_until timestamptz,
++  starter_bought boolean not null default false,
++  created_at timestamptz not null default now()
++);
++
++create table if not exists public.saves (
++  user_id uuid primary key references auth.users on delete cascade,
++  data jsonb not null,
++  version integer not null,
++  game_time double precision not null default 0,
++  saved_at timestamptz not null default now()
++);
++
++create table if not exists public.gem_ledger (
++  id bigint generated always as identity primary key,
++  user_id uuid not null references auth.users on delete cascade,
++  delta integer not null,
++  reason text not null,   -- 'spend:<item>' | 'daily' | 'purchase'
++  ref text,               -- idempotency key (day:mission, purchase id)
++  created_at timestamptz not null default now()
++);
++create unique index if not exists gem_ledger_idem on public.gem_ledger (user_id, reason, ref) where ref is not null;
++create index if not exists gem_ledger_user on public.gem_ledger (user_id, created_at desc);
++
++create table if not exists public.purchases (
++  id uuid primary key default gen_random_uuid(),
++  user_id uuid not null references auth.users on delete cascade,
++  pack text not null,
++  gems integer not null,
++  boost_hours integer not null default 0,
++  amount_satang integer not null,
++  charge_id text unique,
++  status text not null default 'pending' check (status in ('pending', 'paid', 'failed', 'expired')),
++  qr_uri text,
++  authorize_uri text,
++  failure text,
++  created_at timestamptz not null default now(),
++  paid_at timestamptz
++);
++create index if not exists purchases_user on public.purchases (user_id, created_at desc);
++
++-- ---------------------------------------------------------------- profile per user
++
++create or replace function public.handle_new_user()
++returns trigger language plpgsql security definer set search_path = public as $$
++begin
++  insert into public.profiles (id) values (new.id) on conflict do nothing;
++  return new;
++end $$;
++
++drop trigger if exists on_auth_user_created on auth.users;
++create trigger on_auth_user_created after insert on auth.users
++  for each row execute function public.handle_new_user();
++
++-- ---------------------------------------------------------------- row level security
++
++alter table public.profiles enable row level security;
++alter table public.saves enable row level security;
++alter table public.gem_ledger enable row level security;
++alter table public.purchases enable row level security;
++
++drop policy if exists "read own profile" on public.profiles;
++create policy "read own profile" on public.profiles for select using (auth.uid() = id);
++drop policy if exists "read own save" on public.saves;
++create policy "read own save" on public.saves for select using (auth.uid() = user_id);
++drop policy if exists "read own ledger" on public.gem_ledger;
++create policy "read own ledger" on public.gem_ledger for select using (auth.uid() = user_id);
++drop policy if exists "read own purchases" on public.purchases;
++create policy "read own purchases" on public.purchases for select using (auth.uid() = user_id);
++-- no insert/update/delete policies: all writes go through the functions below
++
++-- ---------------------------------------------------------------- saves
++
++create or replace function public.save_game(p_data jsonb)
++returns timestamptz language plpgsql security definer set search_path = public as $$
++declare v_at timestamptz := now();
++begin
++  if auth.uid() is null then raise exception 'not_signed_in'; end if;
++  if octet_length(p_data::text) > 3000000 then raise exception 'save_too_large'; end if;
++  insert into public.saves (user_id, data, version, game_time, saved_at)
++  values (auth.uid(), p_data, coalesce((p_data->>'version')::int, 0), coalesce((p_data->>'time')::double precision, 0), v_at)
++  on conflict (user_id) do update
++    set data = excluded.data, version = excluded.version, game_time = excluded.game_time, saved_at = excluded.saved_at;
++  return v_at;
++end $$;
++
++create or replace function public.load_game()
++returns table (data jsonb, saved_at timestamptz, server_now timestamptz)
++language sql security definer set search_path = public stable as $$
++  select s.data, s.saved_at, now() from public.saves s where s.user_id = auth.uid()
++  union all
++  select null::jsonb, null::timestamptz, now() where not exists (select 1 from public.saves where user_id = auth.uid())
++$$;
++
++create or replace function public.server_now()
++returns timestamptz language sql stable as $$ select now() $$;
++
++-- ---------------------------------------------------------------- gems
++
++-- Prices mirror src/config/meta.ts (GEM_ITEMS). The server's table wins.
++create or replace function public.spend_gems(p_item text)
++returns integer language plpgsql security definer set search_path = public as $$
++declare
++  v_price integer;
++  v_left integer;
++  v_owned integer;
++begin
++  if auth.uid() is null then raise exception 'not_signed_in'; end if;
++  v_price := case p_item
++    when 'skip_1h' then 20
++    when 'boost_4h' then 50
++    when 'offline_plus4' then 300
++    else null end;
++  if v_price is null then raise exception 'unknown_item'; end if;
++
++  if p_item = 'offline_plus4' then
++    select count(*) into v_owned from public.gem_ledger where user_id = auth.uid() and reason = 'spend:offline_plus4';
++    if v_owned >= 4 then raise exception 'max_level'; end if;
++  end if;
++
++  update public.profiles set gems = gems - v_price
++   where id = auth.uid() and gems >= v_price
++   returning gems into v_left;
++  if v_left is null then raise exception 'not_enough_gems'; end if;
++
++  insert into public.gem_ledger (user_id, delta, reason) values (auth.uid(), -v_price, 'spend:' || p_item);
++  if p_item = 'boost_4h' then
++    update public.profiles set boost_until = greatest(coalesce(boost_until, now()), now()) + interval '4 hours' where id = auth.uid();
++  end if;
++  return v_left;
++end $$;
++
++-- 5 gems per mission, 10 for the all-three bonus, at most 25 per day.
++-- p_day is the player's local date; accepted within ±1 day of the server date (time zones).
++create or replace function public.claim_daily_gems(p_day date, p_key text)
++returns integer language plpgsql security definer set search_path = public as $$
++declare
++  v_amount integer := case when p_key = '__bonus' then 10 else 5 end;
++  v_today integer;
++  v_left integer;
++  v_rows integer;
++begin
++  if auth.uid() is null then raise exception 'not_signed_in'; end if;
++  if p_day < current_date - 1 or p_day > current_date + 1 then raise exception 'bad_day'; end if;
++  if length(p_key) > 64 then raise exception 'bad_key'; end if;
++
++  select coalesce(sum(delta), 0) into v_today from public.gem_ledger
++   where user_id = auth.uid() and reason = 'daily' and ref like p_day::text || ':%';
++  if v_today + v_amount > 25 then raise exception 'daily_cap'; end if;
++
++  insert into public.gem_ledger (user_id, delta, reason, ref)
++  values (auth.uid(), v_amount, 'daily', p_day::text || ':' || p_key)
++  on conflict do nothing;
++  get diagnostics v_rows = row_count;
++  if v_rows = 0 then raise exception 'already_claimed'; end if;
++
++  update public.profiles set gems = gems + v_amount where id = auth.uid() returning gems into v_left;
++  return v_left;
++end $$;
++
++-- Called ONLY by the omise-webhook edge function (service role) after it has
++-- re-fetched the charge from Omise and confirmed it is paid. Idempotent.
++create or replace function public.credit_purchase(p_purchase uuid, p_charge text)
++returns boolean language plpgsql security definer set search_path = public as $$
++declare p public.purchases;
++begin
++  select * into p from public.purchases where id = p_purchase for update;
++  if not found then raise exception 'unknown_purchase'; end if;
++  if p.status = 'paid' then return false; end if;
++  if p.charge_id is distinct from p_charge then raise exception 'charge_mismatch'; end if;
++
++  update public.purchases set status = 'paid', paid_at = now() where id = p.id;
++  insert into public.gem_ledger (user_id, delta, reason, ref) values (p.user_id, p.gems, 'purchase', p.id::text)
++    on conflict do nothing;
++  update public.profiles
++     set gems = gems + p.gems,
++         starter_bought = starter_bought or p.pack = 'starter',
++         boost_until = case when p.boost_hours > 0
++                            then greatest(coalesce(boost_until, now()), now()) + make_interval(hours => p.boost_hours)
++                            else boost_until end
++   where id = p.user_id;
++  return true;
++end $$;
++
++-- ---------------------------------------------------------------- grants
++
++revoke all on function public.credit_purchase(uuid, text) from public, anon, authenticated;
++grant execute on function public.credit_purchase(uuid, text) to service_role;
++
++revoke all on function public.save_game(jsonb) from public, anon;
++revoke all on function public.load_game() from public, anon;
++revoke all on function public.spend_gems(text) from public, anon;
++revoke all on function public.claim_daily_gems(date, text) from public, anon;
++grant execute on function public.save_game(jsonb) to authenticated;
++grant execute on function public.load_game() to authenticated;
++grant execute on function public.spend_gems(text) to authenticated;
++grant execute on function public.claim_daily_gems(date, text) to authenticated;
++grant execute on function public.server_now() to anon, authenticated;
+diff --git a/tests/prices.test.ts b/tests/prices.test.ts
+new file mode 100644
+index 0000000..4947863
+--- /dev/null
++++ b/tests/prices.test.ts
+@@ -0,0 +1,25 @@
++import { readFileSync } from 'node:fs';
++import { describe, expect, it } from 'vitest';
++import { DAILY, GEM_ITEMS, PACKS } from '../src/config/meta';
++import { PACKS as SERVER_PACKS } from '../supabase/functions/_shared/packs';
++
++describe('client and server price lists agree', () => {
++  it('gem packs', () => {
++    for (const [id, p] of Object.entries(PACKS)) {
++      const srv = SERVER_PACKS[id];
++      expect(srv, id).toBeDefined();
++      expect(srv.gems).toBe(p.gems);
++      expect(srv.satang).toBe(p.priceThb * 100);
++      expect(srv.boostHours).toBe(p.boostHours ?? 0);
++      expect(srv.oncePerAccount).toBe(!!p.oncePerAccount);
++    }
++    expect(Object.keys(SERVER_PACKS).sort()).toEqual(Object.keys(PACKS).sort());
++  });
++
++  it('gem items and daily rewards in the SQL functions', () => {
++    const sql = readFileSync('supabase/migrations/20261006000000_init.sql', 'utf8');
++    for (const [id, item] of Object.entries(GEM_ITEMS)) expect(sql).toContain(`when '${id}' then ${item.gems}`);
++    expect(sql).toContain(`when p_key = '__bonus' then ${DAILY.gemsBonus} else ${DAILY.gemsEach}`);
++    expect(sql).toContain(`> ${DAILY.gemsEach * DAILY.count + DAILY.gemsBonus}`);
++  });
++});

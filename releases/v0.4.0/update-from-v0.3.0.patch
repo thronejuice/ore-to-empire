@@ -1,0 +1,542 @@
+diff --git a/README.md b/README.md
+index 37c94c5..cfd15e3 100644
+--- a/README.md
++++ b/README.md
+@@ -20,7 +20,7 @@ To turn on accounts, cloud saves and the gem store, follow **[docs/SETUP-PHASE4.
+ ## What's in the game
+ 
+ - **Production:** 21 items over 5 tiers (ore → bars/steel/glass → parts → motors/circuits/engines → robot arms, computers, EVs). Drills, furnaces, assemblers, 2×2 fabricators.
+-- **Logistics:** tap-to-connect belts with auto-routing, warehouses, loading docks; trucks, trains and ships to 5 markets with demand-driven prices and news events.
++- **Logistics:** tap-to-connect belts with auto-routing, move any building (belts re-route and keep their cargo), warehouses, loading docks; trucks, trains and ships to 5 markets with demand-driven prices and news events.
+ - **Power:** HQ grid, coal, solar, batteries, nuclear. Shortage slows every machine.
+ - **Land:** buy adjacent plots; sand and uranium only exist on bought land.
+ - **Research:** 23 timed projects in 5 tiers (keeps running offline).
+diff --git a/package-lock.json b/package-lock.json
+index 9bddb1e..63a8b1b 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -14,6 +14,7 @@
+         "react-dom": "^18.3.1"
+       },
+       "devDependencies": {
++        "@types/node": "^22.20.5",
+         "@types/react": "^18.3.31",
+         "@types/react-dom": "^18.3.7",
+         "@vitejs/plugin-react": "^6.1.2",
+@@ -452,6 +453,16 @@
+       "dev": true,
+       "license": "MIT"
+     },
++    "node_modules/@types/node": {
++      "version": "22.20.5",
++      "resolved": "https://registry.npmjs.org/@types/node/-/node-22.20.5.tgz",
++      "integrity": "sha512-U2+DNr+wSjpsTS/wZGYHq7GcwfuSmKiKvoPvK22zwTlRhU91yOniN4qRR5KhIjvif7ysw/dz/hKmfDH0Ris4aA==",
++      "dev": true,
++      "license": "MIT",
++      "dependencies": {
++        "undici-types": "~6.21.0"
++      }
++    },
+     "node_modules/@types/prop-types": {
+       "version": "15.7.15",
+       "resolved": "https://registry.npmjs.org/@types/prop-types/-/prop-types-15.7.15.tgz",
+@@ -1693,6 +1704,13 @@
+         "@typescript/typescript-win32-x64": "7.0.2"
+       }
+     },
++    "node_modules/undici-types": {
++      "version": "6.21.0",
++      "resolved": "https://registry.npmjs.org/undici-types/-/undici-types-6.21.0.tgz",
++      "integrity": "sha512-iwDZqg0QAGrg9Rav5H4n0M64c3mkR59cJ6wQp+7C4nI0gsmExaedaYLNO44eT4AtBBwjbTiGPMlt2Md0T9H9JQ==",
++      "dev": true,
++      "license": "MIT"
++    },
+     "node_modules/vite": {
+       "version": "8.3.2",
+       "resolved": "https://registry.npmjs.org/vite/-/vite-8.3.2.tgz",
+diff --git a/package.json b/package.json
+index 9f5a0e0..b92705d 100644
+--- a/package.json
++++ b/package.json
+@@ -15,6 +15,7 @@
+     "react-dom": "^18.3.1"
+   },
+   "devDependencies": {
++    "@types/node": "^22.20.5",
+     "@types/react": "^18.3.31",
+     "@types/react-dom": "^18.3.7",
+     "@vitejs/plugin-react": "^6.1.2",
+diff --git a/src/core/actions.ts b/src/core/actions.ts
+index a1daf91..a848829 100644
+--- a/src/core/actions.ts
++++ b/src/core/actions.ts
+@@ -11,9 +11,9 @@ import {
+ } from '../config/balance';
+ import { beltMaxLevel, hasResearch, recipeUnlocked, recipesFor } from './economy';
+ import { beltPoints, findPath } from './pathfind';
+-import { getBuilding, idx, inBounds, isUnlocked, makeBuilding, occupancy } from './state';
++import { getBuilding, idx, inBounds, invalidateOccupancy, isUnlocked, makeBuilding, occupancy } from './state';
+ import { acceptsType } from './sim';
+-import type { Building, GameState } from './types';
++import type { Belt, Building, GameState } from './types';
+ 
+ /** Result of an action: ok, or a translation key explaining why not. */
+ export type ActionResult<T = undefined> = { ok: true; value: T } | { ok: false; reason: string };
+@@ -21,9 +21,23 @@ export type ActionResult<T = undefined> = { ok: true; value: T } | { ok: false;
+ const ok = <T>(value: T): ActionResult<T> => ({ ok: true, value });
+ const fail = (reason: string): ActionResult<never> => ({ ok: false, reason });
+ 
+-export function canPlace(state: GameState, type: BuildingType, x: number, y: number): ActionResult<undefined> {
++/**
++ * Can a building of `type` stand at x,y? When moving, `ignore` is the building
++ * being moved: its own cells and its own belts (which get re-routed) don't block.
++ */
++export function canPlace(state: GameState, type: BuildingType, x: number, y: number, ignore?: Building): ActionResult<undefined> {
+   const def = BUILDINGS[type];
+   const occ = occupancy(state);
++  const ownBeltCells = new Map<number, number>();
++  if (ignore) {
++    for (const belt of state.belts) {
++      if (belt.from !== ignore.id && belt.to !== ignore.id) continue;
++      for (const [px, py] of belt.path) {
++        const i = idx(state, px, py);
++        ownBeltCells.set(i, (ownBeltCells.get(i) ?? 0) + 1);
++      }
++    }
++  }
+   for (let dy = 0; dy < def.h; dy++) {
+     for (let dx = 0; dx < def.w; dx++) {
+       const cx = x + dx;
+@@ -31,16 +45,75 @@ export function canPlace(state: GameState, type: BuildingType, x: number, y: num
+       if (!inBounds(state, cx, cy)) return fail('err.outOfBounds');
+       if (!isUnlocked(state, cx, cy)) return fail('err.locked');
+       const i = idx(state, cx, cy);
+-      if (occ.building[i]) return fail('err.occupied');
+-      if (occ.belts[i]) return fail('err.beltHere');
++      if (occ.building[i] && occ.building[i] !== ignore?.id) return fail('err.occupied');
++      if (occ.belts[i] - (ownBeltCells.get(i) ?? 0) > 0) return fail('err.beltHere');
+     }
+   }
+   if (type === 'miner' && !state.world.deposits[idx(state, x, y)]) return fail('err.needDeposit');
+   if (type === 'miner' && state.world.deposits[idx(state, x, y)] === 'uranium_ore' && !hasResearch(state, 'r_nuclear')) return fail('err.needResearch');
+-  if (state.money < def.cost) return fail('err.noMoney');
++  if (!ignore && state.money < def.cost) return fail('err.noMoney');
+   return ok(undefined);
+ }
+ 
++/**
++ * Moves a building, keeping its level, recipe, contents and belts. Belts are
++ * re-routed to the new spot; items riding them stay on (spread along the new
++ * length). Moving is free except for belt tiles beyond the old lengths.
++ * Nothing changes if any belt can't reach the new spot.
++ */
++export function moveBuilding(state: GameState, id: number, x: number, y: number): ActionResult<{ cost: number }> {
++  const b = getBuilding(state, id);
++  if (!b) return fail('err.notFound');
++  if (b.x === x && b.y === y) return fail('err.samePlace');
++  const check = canPlace(state, b.type, x, y, b);
++  if (!check.ok) return check;
++
++  const own = state.belts.filter((belt) => belt.from === id || belt.to === id);
++  const oldPos = { x: b.x, y: b.y };
++  const oldTiles = own.reduce((a, belt) => a + Math.max(1, belt.path.length), 0);
++
++  // take the building's belts off the map, move it, then route each belt again
++  state.belts = state.belts.filter((belt) => belt.from !== id && belt.to !== id);
++  b.x = x;
++  b.y = y;
++  invalidateOccupancy(state);
++
++  const rerouted: Belt[] = [];
++  let newTiles = 0;
++  for (const belt of own) {
++    const from = getBuilding(state, belt.from)!;
++    const to = getBuilding(state, belt.to)!;
++    const path = findPath(state, from, to);
++    if (!path) {
++      // undo everything
++      state.belts = state.belts.filter((x2) => !rerouted.includes(x2));
++      state.belts.push(...own);
++      b.x = oldPos.x;
++      b.y = oldPos.y;
++      invalidateOccupancy(state);
++      return fail('err.cantReroute');
++    }
++    const { points, length } = beltPoints(from, to, path);
++    const scale = belt.length > 0 ? length / belt.length : 1;
++    const nb = { ...belt, path, points, length, items: belt.items.map((it) => ({ ...it, pos: Math.min(length, it.pos * scale) })) };
++    rerouted.push(nb);
++    state.belts.push(nb); // later belts see this one (they may bridge over it)
++    newTiles += Math.max(1, path.length);
++  }
++  const cost = Math.max(0, newTiles - oldTiles) * BALANCE.beltCostPerTile;
++  if (state.money < cost) {
++    state.belts = state.belts.filter((x2) => !rerouted.includes(x2));
++    state.belts.push(...own);
++    b.x = oldPos.x;
++    b.y = oldPos.y;
++    invalidateOccupancy(state);
++    return fail('err.noMoney');
++  }
++  state.money -= cost;
++  invalidateOccupancy(state);
++  return ok({ cost });
++}
++
+ export function placeBuilding(state: GameState, type: BuildingType, x: number, y: number): ActionResult<Building> {
+   const check = canPlace(state, type, x, y);
+   if (!check.ok) return check;
+diff --git a/src/core/state.ts b/src/core/state.ts
+index 6214f48..3411af9 100644
+--- a/src/core/state.ts
++++ b/src/core/state.ts
+@@ -240,6 +240,11 @@ interface Occupancy {
+ 
+ const occCache = new WeakMap<GameState, Occupancy>();
+ 
++/** call after moving things without changing the building/belt count */
++export function invalidateOccupancy(state: GameState) {
++  occCache.delete(state);
++}
++
+ export function occupancy(state: GameState): Occupancy {
+   const key = `${state.nextId}:${state.buildings.length}:${state.belts.length}`;
+   const cached = occCache.get(state);
+diff --git a/src/game.ts b/src/game.ts
+index 48a7489..dc9a911 100644
+--- a/src/game.ts
++++ b/src/game.ts
+@@ -2,6 +2,7 @@ import { BALANCE, BUILDINGS, type BuildingType, type CityId, type ItemId, type R
+ import type { GemItemId, PerkId } from './config/meta';
+ import {
+   createLink,
++  moveBuilding,
+   placeBuilding,
+   planLink,
+   removeBuilding,
+@@ -28,7 +29,11 @@ import type { GameState } from './core/types';
+ import { translate, type Lang } from './i18n';
+ import { sfx, setSoundEnabled, type Sfx } from './audio';
+ 
+-export type Mode = { kind: 'select' } | { kind: 'build'; type: BuildingType } | { kind: 'link'; from: number | null };
++export type Mode =
++  | { kind: 'select' }
++  | { kind: 'build'; type: BuildingType }
++  | { kind: 'link'; from: number | null }
++  | { kind: 'move'; id: number };
+ 
+ export interface Toast {
+   id: number;
+@@ -358,6 +363,10 @@ export class Game {
+     this.setMode({ kind: 'link', from });
+   }
+ 
++  startMove(id: number) {
++    this.setMode({ kind: 'move', id });
++  }
++
+   select(id: number | null) {
+     this.ui.selected = id;
+     this.ui.plot = null;
+@@ -378,6 +387,23 @@ export class Game {
+       return;
+     }
+ 
++    if (mode.kind === 'move') {
++      if (hit?.id === mode.id) {
++        // tapping the building itself cancels
++        this.setMode({ kind: 'select' });
++        this.select(mode.id);
++        return;
++      }
++      const r = moveBuilding(this.state, mode.id, x, y);
++      if (this.result(r)) {
++        this.play('place');
++        this.setMode({ kind: 'select' });
++        this.select(mode.id);
++        this.structureChanged();
++      }
++      return;
++    }
++
+     if (mode.kind === 'link') {
+       if (!hit) {
+         this.setMode({ kind: 'select' });
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 55480a8..5b94fa1 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -428,6 +428,12 @@ export const en = {
+   'err.signInFailed': 'Sign-in failed — try again',
+   'err.paymentFailed': 'Payment failed.',
+   'err.alreadyBought': 'You already bought the starter pack',
++
++  'ui.move': 'Move',
++  'ui.moveTip': 'Move this building (M). Belts follow it.',
++  'ui.moveHint': 'Tap the new spot for the {name}',
++  'err.cantReroute': 'Belts can\'t reach that spot',
++  'err.samePlace': 'It\'s already here',
+ };
+ 
+ export type Dict = Record<keyof typeof en, string>;
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index 34af650..79be1ec 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -430,4 +430,10 @@ export const th: Dict = {
+   'err.signInFailed': 'เข้าสู่ระบบไม่สำเร็จ ลองอีกครั้ง',
+   'err.paymentFailed': 'ชำระเงินไม่สำเร็จ',
+   'err.alreadyBought': 'คุณซื้อแพ็กเริ่มต้นไปแล้ว',
++
++  'ui.move': 'ย้าย',
++  'ui.moveTip': 'ย้ายอาคารนี้ (กด M) สายพานจะย้ายตามไปด้วย',
++  'ui.moveHint': 'แตะตำแหน่งใหม่ของ{name}',
++  'err.cantReroute': 'สายพานไปถึงตำแหน่งนั้นไม่ได้',
++  'err.samePlace': 'อยู่ตำแหน่งนี้อยู่แล้ว',
+ };
+diff --git a/src/render/renderer.ts b/src/render/renderer.ts
+index 866c45c..f176c05 100644
+--- a/src/render/renderer.ts
++++ b/src/render/renderer.ts
+@@ -620,6 +620,42 @@ export class Renderer {
+       if (ui.hover) this.ghost(g, mode.type, ui.hover[0], ui.hover[1]);
+     }
+ 
++    if (mode.kind === 'move') {
++      const mb = getBuilding(s, mode.id);
++      if (mb) {
++        this.outline(g, mb, C.orange, 0.5 + 0.5 * pulse);
++        if (mb.type === 'miner') {
++          // drills can only go onto deposits: show the free ones
++          for (let y = 0; y < s.world.size; y++)
++            for (let x = 0; x < s.world.size; x++) {
++              if (!s.world.deposits[idx(s, x, y)] || (x === mb.x && y === mb.y)) continue;
++              if (!canPlace(s, 'miner', x, y, mb).ok) continue;
++              g.roundRect(x * TILE + 2, y * TILE + 2, TILE - 4, TILE - 4, 6).stroke({ width: 2, color: C.amber, alpha: 0.35 + 0.5 * pulse });
++            }
++        }
++        if (ui.hover && (ui.hover[0] !== mb.x || ui.hover[1] !== mb.y)) {
++          const def = BUILDINGS[mb.type];
++          const ok = canPlace(s, mb.type, ui.hover[0], ui.hover[1], mb).ok;
++          const [hx, hy] = ui.hover;
++          g.roundRect(hx * TILE + 3, hy * TILE + 3, def.w * TILE - 6, def.h * TILE - 6, 7)
++            .fill({ color: ok ? C.ok : C.bad, alpha: 0.18 })
++            .stroke({ width: 2, color: ok ? C.ok : C.bad, alpha: 0.9 });
++          // dashed hint from the old spot to the new one
++          const ax = (mb.x + def.w / 2) * TILE;
++          const ay = (mb.y + def.h / 2) * TILE;
++          const bx = (hx + def.w / 2) * TILE;
++          const by = (hy + def.h / 2) * TILE;
++          const len = Math.hypot(bx - ax, by - ay);
++          for (let d = 0; d < len; d += 14) {
++            const t0 = d / len;
++            const t1 = Math.min(1, (d + 7) / len);
++            g.moveTo(ax + (bx - ax) * t0, ay + (by - ay) * t0).lineTo(ax + (bx - ax) * t1, ay + (by - ay) * t1);
++          }
++          g.stroke({ width: 2, color: ok ? C.ok : C.bad, alpha: 0.6 });
++        }
++      }
++    }
++
+     if (mode.kind === 'link') {
+       const from = mode.from !== null ? getBuilding(s, mode.from) : undefined;
+       // every building that can receive glows softly
+diff --git a/src/ui/App.tsx b/src/ui/App.tsx
+index 7ec34de..97a1205 100644
+--- a/src/ui/App.tsx
++++ b/src/ui/App.tsx
+@@ -31,6 +31,10 @@ export function App() {
+     (window as unknown as { __renderer: Renderer }).__renderer = renderer;
+     if (canvasHost.current) void renderer.mount(canvasHost.current);
+     const onKey = (e: KeyboardEvent) => {
++      if ((e.key === 'm' || e.key === 'M') && game.ui.mode.kind === 'select' && game.ui.selected !== null) {
++        game.startMove(game.ui.selected);
++        return;
++      }
+       if (e.key === 'Escape') {
+         if (game.ui.mode.kind !== 'select') game.setMode({ kind: 'select' });
+         else if (game.ui.panel !== 'none') game.openPanel('none');
+diff --git a/src/ui/Hud.tsx b/src/ui/Hud.tsx
+index aab4404..a2ceec6 100644
+--- a/src/ui/Hud.tsx
++++ b/src/ui/Hud.tsx
+@@ -169,6 +169,9 @@ export function BottomBar() {
+           ? t('ui.placeMinerHint')
+           : t('ui.placeHint', { name: t(`b.${mode.type}`) });
+       hint += ` · ${fmtMoney(BUILDINGS[mode.type].cost)}`;
++    } else if (mode.kind === 'move') {
++      const mb = game.state.buildings.find((x) => x.id === mode.id);
++      hint = t('ui.moveHint', { name: mb ? t(`b.${mb.type}`) : '' });
+     } else {
+       hint = mode.from === null ? t('ui.linkPickSource') : t('ui.linkPickTarget');
+       const p = game.ui.linkPreview;
+diff --git a/src/ui/Inspector.tsx b/src/ui/Inspector.tsx
+index a9ed959..fd2f1cf 100644
+--- a/src/ui/Inspector.tsx
++++ b/src/ui/Inspector.tsx
+@@ -217,6 +217,9 @@ export function Inspector() {
+             ⇢ {t('ui.link')}
+           </button>
+         )}
++        <button className="btn" onClick={() => game.startMove(b.id)} title={t('ui.moveTip')}>
++          ✥ {t('ui.move')}
++        </button>
+         {isUpgradable(b) && (
+           <button className="btn" disabled={!canUp || s.money < nextCost} onClick={() => game.upgrade(b.id)}>
+             {canUp ? (
+diff --git a/tests/move.test.ts b/tests/move.test.ts
+new file mode 100644
+index 0000000..c4c4051
+--- /dev/null
++++ b/tests/move.test.ts
+@@ -0,0 +1,137 @@
++import { describe, expect, it } from 'vitest';
++import { BALANCE, type DepositId } from '../src/config/balance';
++import { createLink, moveBuilding, placeBuilding, upgradeBuilding } from '../src/core/actions';
++import { tick } from '../src/core/sim';
++import { buildingAt, idx, newGame } from '../src/core/state';
++import type { GameState } from '../src/core/types';
++
++const run = (s: GameState, seconds: number) => {
++  for (let t = 0; t < seconds; t += BALANCE.tickSeconds) tick(s, BALANCE.tickSeconds);
++};
++const hq = (s: GameState) => s.buildings.find((b) => b.type === 'hq')!;
++
++function deposit(s: GameState, type: DepositId, skip = 0): [number, number] {
++  for (let y = 8; y < 24; y++)
++    for (let x = 8; x < 24; x++) if (s.world.deposits[idx(s, x, y)] === type && skip-- <= 0) return [x, y];
++  throw new Error('no ' + type);
++}
++
++function emptyTile(s: GameState, near: [number, number]): [number, number] {
++  for (let r = 1; r < 8; r++)
++    for (let dy = -r; dy <= r; dy++)
++      for (let dx = -r; dx <= r; dx++) {
++        const x = near[0] + dx;
++        const y = near[1] + dy;
++        if (x < 8 || y < 8 || x > 23 || y > 23) continue;
++        if (s.world.deposits[idx(s, x, y)] || buildingAt(s, x, y)) continue;
++        if (s.belts.some((b) => b.path.some(([a, c]) => a === x && c === y))) continue;
++        return [x, y];
++      }
++  throw new Error('no empty tile');
++}
++
++/** miner → furnace → HQ, running for a while */
++function chain() {
++  const s = newGame(7);
++  s.money = 10000;
++  const [mx, my] = deposit(s, 'iron_ore');
++  const m = placeBuilding(s, 'miner', mx, my);
++  const [fx, fy] = emptyTile(s, [mx, my]);
++  const f = placeBuilding(s, 'furnace', fx, fy);
++  if (!m.ok || !f.ok) throw new Error();
++  createLink(s, m.value.id, f.value.id);
++  createLink(s, f.value.id, hq(s).id);
++  upgradeBuilding(s, f.value.id);
++  upgradeBuilding(s, f.value.id);
++  run(s, 30);
++  return { s, miner: m.value, furnace: f.value };
++}
++
++describe('moving buildings', () => {
++  it('keeps level, recipe, contents and both belts, which re-route to the new spot', () => {
++    const { s, furnace } = chain();
++    const before = { level: furnace.level, recipe: furnace.recipe, input: { ...furnace.input }, belts: s.belts.length };
++    const onBelts = s.belts.reduce((a, b) => a + b.items.length, 0);
++    const [nx, ny] = emptyTile(s, [furnace.x + 3, furnace.y + 3]);
++
++    const r = moveBuilding(s, furnace.id, nx, ny);
++    expect(r.ok).toBe(true);
++    expect([furnace.x, furnace.y]).toEqual([nx, ny]);
++    expect(buildingAt(s, nx, ny)?.id).toBe(furnace.id);
++    expect(furnace.level).toBe(before.level);
++    expect(furnace.recipe).toBe(before.recipe);
++    expect(furnace.input).toEqual(before.input);
++    expect(s.belts.length).toBe(before.belts);
++    expect(s.belts.reduce((a, b) => a + b.items.length, 0)).toBe(onBelts); // no items lost
++    for (const b of s.belts) for (const it of b.items) expect(it.pos).toBeLessThanOrEqual(b.length);
++
++    // and the factory keeps producing
++    const sold = s.stats.sold.iron_bar ?? 0;
++    run(s, 60);
++    expect(s.stats.sold.iron_bar ?? 0).toBeGreaterThan(sold + 5);
++  });
++
++  it('the old spot is free again and the new spot is taken', () => {
++    const { s, furnace } = chain();
++    const old: [number, number] = [furnace.x, furnace.y];
++    const [nx, ny] = emptyTile(s, [furnace.x + 3, furnace.y + 3]);
++    expect(moveBuilding(s, furnace.id, nx, ny).ok).toBe(true);
++    expect(buildingAt(s, ...old)).toBeUndefined();
++    expect(placeBuilding(s, 'furnace', nx, ny).ok).toBe(false);
++  });
++
++  it('refuses blocked or invalid spots and leaves everything unchanged', () => {
++    const { s, miner, furnace } = chain();
++    const snapshot = JSON.stringify({ b: s.buildings, belts: s.belts, money: s.money });
++    expect(moveBuilding(s, furnace.id, miner.x, miner.y).ok).toBe(false); // occupied
++    expect(moveBuilding(s, furnace.id, 0, 0).ok).toBe(false); // land not owned
++    const [ex, ey] = emptyTile(s, [miner.x, miner.y]);
++    expect(moveBuilding(s, miner.id, ex, ey)).toEqual({ ok: false, reason: 'err.needDeposit' });
++    expect(JSON.stringify({ b: s.buildings, belts: s.belts, money: s.money })).toBe(snapshot);
++  });
++
++  it('a drill can move to another deposit', () => {
++    const { s, miner } = chain();
++    const [x2, y2] = deposit(s, 'iron_ore', 3);
++    expect(moveBuilding(s, miner.id, x2, y2).ok).toBe(true);
++    const sold = s.stats.sold.iron_bar ?? 0;
++    run(s, 60);
++    expect(s.stats.sold.iron_bar ?? 0).toBeGreaterThan(sold);
++  });
++
++  it('can slide onto cells its own belt used to cover', () => {
++    const { s, furnace } = chain();
++    const out = s.belts.find((b) => b.from === furnace.id)!;
++    const [px, py] = out.path[0];
++    expect(moveBuilding(s, furnace.id, px, py).ok).toBe(true);
++  });
++
++  it('rolls back when a belt cannot reach the new spot', () => {
++    const { s, furnace } = chain();
++    // wall the destination in with warehouses so no belt can get there
++    const [nx, ny] = [20, 20];
++    s.money = 1e6;
++    for (const [dx, dy] of [
++      [1, 0],
++      [-1, 0],
++      [0, 1],
++      [0, -1],
++    ])
++      placeBuilding(s, 'warehouse', nx + dx, ny + dy);
++    expect(buildingAt(s, nx, ny)).toBeUndefined(); // test setup sanity
++    expect(s.world.deposits[idx(s, nx, ny)]).toBeNull();
++    const snapshot = JSON.stringify({ x: furnace.x, y: furnace.y, belts: s.belts });
++    const r = moveBuilding(s, furnace.id, nx, ny);
++    expect(r).toEqual({ ok: false, reason: 'err.cantReroute' });
++    expect(JSON.stringify({ x: furnace.x, y: furnace.y, belts: s.belts })).toBe(snapshot);
++    expect(buildingAt(s, furnace.x, furnace.y)?.id).toBe(furnace.id);
++  });
++
++  it('the HQ can move too', () => {
++    const { s } = chain();
++    const h = hq(s);
++    expect(moveBuilding(s, h.id, 9, 20).ok || moveBuilding(s, h.id, 20, 9).ok).toBe(true);
++    run(s, 40);
++    expect(s.stats.sold.iron_bar ?? 0).toBeGreaterThan(0);
++  });
++});
+diff --git a/tsconfig.json b/tsconfig.json
+index 14fe401..4275aeb 100644
+--- a/tsconfig.json
++++ b/tsconfig.json
+@@ -12,7 +12,7 @@
+     "skipLibCheck": true,
+     "isolatedModules": true,
+     "resolveJsonModule": true,
+-    "types": ["vite/client"]
++    "types": ["vite/client", "node"]
+   },
+   "include": ["src", "tests"]
+ }

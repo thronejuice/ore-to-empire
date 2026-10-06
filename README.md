@@ -58,3 +58,20 @@ docs/SETUP-PHASE4.md    online setup guide (Thai)
 
 All numbers are in `src/config/balance.ts` and `src/config/meta.ts`.
 Gem prices also live on the server (`supabase/functions/_shared/packs.ts`, `spend_gems` in the migration) — the server copy decides what players pay.
+
+## Versions & releases
+
+- `CHANGELOG.md` — what changed in every version (Thai).
+- `releases/v<x.y.z>/` — one folder per version: `index.html` (play that version, its own save slot),
+  `CHANGES.md` (summary + changed files) and `update-from-v<prev>.patch`.
+- Every version is a git tag: `git checkout v0.5.0` gives that exact source.
+
+Releasing a new version:
+
+```bash
+# 1. bump "version" in package.json and add a "## [x.y.z] - date" section to CHANGELOG.md
+git commit -am "vX.Y.Z: ..."
+git tag -a vX.Y.Z -m "vX.Y.Z ..."
+npm run release -- X.Y.Z        # builds releases/vX.Y.Z and updates releases/README.md
+git add releases && git commit -m "release vX.Y.Z"
+```

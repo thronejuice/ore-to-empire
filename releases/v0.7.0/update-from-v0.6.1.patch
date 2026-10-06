@@ -1,0 +1,874 @@
+diff --git a/README.md b/README.md
+index 8aa4b1d..2e9c17c 100644
+--- a/README.md
++++ b/README.md
+@@ -20,7 +20,7 @@ To turn on accounts, cloud saves and the gem store, follow **[docs/SETUP-PHASE4.
+ ## What's in the game
+ 
+ - **Production:** 21 items over 5 tiers (ore → bars/steel/glass → parts → motors/circuits/engines → robot arms, computers, EVs). Drills, furnaces, assemblers, 2×2 fabricators.
+-- **Logistics:** tap-to-connect belts with auto-routing, move any building (free for 1 min after building, then 10% of its value; belts re-route and keep their cargo), warehouses, loading docks; trucks, trains and ships to 5 markets with demand-driven prices and news events.
++- **Logistics:** tap-to-connect belts with auto-routing, one-tap "tidy belts" (global re-route with preview), belt view modes, cargo-coloured belts and bridges, move any building (free for 1 min after building, then 10% of its value; belts re-route and keep their cargo), warehouses, loading docks; trucks, trains and ships to 5 markets with demand-driven prices and news events.
+ - **Power:** HQ grid, coal, solar, batteries, nuclear. Shortage slows every machine.
+ - **Ore:** every deposit tile has a grade (low ×0.6 / normal / high ×1.5). Rich veins (×3, limited amount, low-ore warning) appear while you play and pause while you're away.
+ - **Land:** buy adjacent plots; sand and uranium only exist on bought land.
+diff --git a/src/core/pathfind.ts b/src/core/pathfind.ts
+index bd1fc0d..d79ab45 100644
+--- a/src/core/pathfind.ts
++++ b/src/core/pathfind.ts
+@@ -66,7 +66,17 @@ function cellsOf(b: Building): [number, number][] {
+  * Finds the cheapest belt route between two buildings. Returns the cells strictly
+  * between them (may be empty when they touch), or null when no route exists.
+  */
+-export function findPath(state: GameState, from: Building, to: Building): [number, number][] | null {
++export interface PathCosts {
++  cross: number;
++  turn: number;
++  deposit: number;
++  /** discount for running right next to another belt (keeps belts in tidy bundles) */
++  hug: number;
++}
++
++export const DEFAULT_COSTS: PathCosts = { cross: CROSS_COST, turn: TURN_COST, deposit: DEPOSIT_COST, hug: 0 };
++
++export function findPath(state: GameState, from: Building, to: Building, costs: PathCosts = DEFAULT_COSTS): [number, number][] | null {
+   const occ = occupancy(state);
+   const size = state.world.size;
+   const n = size * size;
+@@ -112,10 +122,20 @@ export function findPath(state: GameState, from: Building, to: Building): [numbe
+       }
+       if (bid !== 0) continue;
+       if (!isUnlocked(state, nx, ny)) continue;
+-      const step =
++      let step =
+         1 +
+-        (occ.belts[ncell] > 0 ? CROSS_COST : 0) +
+-        (state.world.deposits[ncell] ? DEPOSIT_COST : 0) + (isSrc.has(cell) || d === dir ? 0 : TURN_COST);
++        (occ.belts[ncell] > 0 ? costs.cross : 0) +
++        (state.world.deposits[ncell] ? costs.deposit : 0) +
++        (isSrc.has(cell) || d === dir ? 0 : costs.turn);
++      if (costs.hug && occ.belts[ncell] === 0) {
++        // beside another belt (perpendicular to our direction) → slightly cheaper
++        const px = DIRS[(d + 1) & 3];
++        const a = nx + px[0];
++        const b = ny + px[1];
++        const c = nx - px[0];
++        const e = ny - px[1];
++        if ((inBounds(state, a, b) && occ.belts[idx(state, a, b)] > 0) || (inBounds(state, c, e) && occ.belts[idx(state, c, e)] > 0)) step -= costs.hug;
++      }
+       const nnode = ncell * 4 + d;
+       if (base + step < dist[nnode]) {
+         dist[nnode] = base + step;
+diff --git a/src/core/tidy.ts b/src/core/tidy.ts
+new file mode 100644
+index 0000000..6f5cddf
+--- /dev/null
++++ b/src/core/tidy.ts
+@@ -0,0 +1,184 @@
++import { BALANCE } from '../config/balance';
++import { beltPoints, findPath, type PathCosts } from './pathfind';
++import { getBuilding, idx, invalidateOccupancy } from './state';
++import type { Belt, GameState } from './types';
++
++/**
++ * "Tidy belts": rip up a set of belts and route them again together, looking for
++ * the layout with the fewest crossings, then the fewest turns and tiles.
++ * Buildings never move. Items riding the belts stay on them.
++ */
++
++export interface LayoutScore {
++  crossings: number; // cells shared by 2+ belts
++  tiles: number; // total belt length in cells
++  turns: number;
++}
++
++export interface TidyPlan {
++  ids: number[];
++  routes: Map<number, { path: [number, number][]; points: [number, number][]; length: number }>;
++  before: LayoutScore;
++  after: LayoutScore;
++  cost: number;
++  /** layout fingerprint when planned; applying refuses if it changed */
++  sig: string;
++}
++
++// heavier crossing/turn penalties than the one-at-a-time router, plus bundling
++const TIDY_COSTS: PathCosts = { cross: 8, turn: 0.35, deposit: 3, hug: 0.15 };
++export const TIDY_ROUNDS = 4;
++const TIDY_SHUFFLES = 8;
++
++function turnsOf(path: [number, number][]): number {
++  let t = 0;
++  for (let i = 2; i < path.length; i++) {
++    const dx1 = path[i - 1][0] - path[i - 2][0];
++    const dy1 = path[i - 1][1] - path[i - 2][1];
++    const dx2 = path[i][0] - path[i - 1][0];
++    const dy2 = path[i][1] - path[i - 1][1];
++    if (dx1 !== dx2 || dy1 !== dy2) t++;
++  }
++  return t;
++}
++
++export function scoreLayout(state: GameState, belts: Pick<Belt, 'path'>[] = state.belts): LayoutScore {
++  const count = new Map<number, number>();
++  let tiles = 0;
++  let turns = 0;
++  for (const b of belts) {
++    tiles += Math.max(1, b.path.length);
++    turns += turnsOf(b.path);
++    for (const [x, y] of b.path) {
++      const i = idx(state, x, y);
++      count.set(i, (count.get(i) ?? 0) + 1);
++    }
++  }
++  let crossings = 0;
++  for (const c of count.values()) if (c > 1) crossings += c - 1;
++  return { crossings, tiles, turns };
++}
++
++export function layoutSig(state: GameState): string {
++  return (
++    state.buildings.map((b) => `${b.id}:${b.x},${b.y}`).join('|') +
++    '#' +
++    state.belts.map((b) => `${b.id}:${b.from}>${b.to}:${b.path.length}`).join('|')
++  );
++}
++
++const weight = (s: LayoutScore) => s.crossings * 100 + s.tiles + s.turns * 0.5;
++
++/** Routes `order` one by one on top of `fixed`. Returns null if any belt has no route. */
++function routeAll(state: GameState, fixed: Belt[], order: Belt[]) {
++  const temp: GameState = { ...state, belts: [...fixed] }; // separate occupancy cache
++  const out = new Map<number, [number, number][]>();
++  for (const belt of order) {
++    const from = getBuilding(state, belt.from);
++    const to = getBuilding(state, belt.to);
++    if (!from || !to) return null;
++    const path = findPath(temp, from, to, TIDY_COSTS);
++    if (!path) return null;
++    out.set(belt.id, path);
++    temp.belts = [...temp.belts, { ...belt, path }];
++  }
++  return { out, belts: temp.belts };
++}
++
++/**
++ * Builds a tidier layout for the given belts (default: all). Tries several routing
++ * orders, then improves the best one by re-routing each belt with the others fixed.
++ * Pure: the state is not changed. Returns null if nothing would improve.
++ */
++export function planTidy(state: GameState, beltIds?: number[]): TidyPlan | null {
++  const ids = beltIds ?? state.belts.map((b) => b.id);
++  const target = state.belts.filter((b) => ids.includes(b.id));
++  if (!target.length) return null;
++  const fixed = state.belts.filter((b) => !ids.includes(b.id));
++  const before = scoreLayout(state);
++
++  const span = (b: Belt) => {
++    const f = getBuilding(state, b.from)!;
++    const t = getBuilding(state, b.to)!;
++    return Math.abs(f.x - t.x) + Math.abs(f.y - t.y);
++  };
++  const orders: Belt[][] = [
++    [...target].sort((a, b) => span(a) - span(b)), // short first
++    [...target].sort((a, b) => span(b) - span(a)), // long first
++    [...target].sort((a, b) => a.from - b.from || a.to - b.to), // grouped by source
++    [...target].sort((a, b) => a.to - b.to || a.from - b.from), // grouped by destination
++  ];
++  // plus a few shuffled orders (seeded, so the same factory gives the same result)
++  let seed = target.length * 2654435761;
++  const rnd = () => ((seed = (seed * 1103515245 + 12345) >>> 0) / 4294967296);
++  for (let k = 0; k < TIDY_SHUFFLES; k++) {
++    const o = [...target];
++    for (let i = o.length - 1; i > 0; i--) {
++      const j = Math.floor(rnd() * (i + 1));
++      [o[i], o[j]] = [o[j], o[i]];
++    }
++    orders.push(o);
++  }
++
++  let best: { paths: Map<number, [number, number][]>; score: LayoutScore } | null = null;
++  for (const order of orders) {
++    const r = routeAll(state, fixed, order);
++    if (!r) continue;
++    const score = scoreLayout(state, r.belts);
++    if (!best || weight(score) < weight(best.score)) best = { paths: r.out, score };
++  }
++  if (!best) return null;
++
++  // rip-up and re-route: each belt again with all the others in place
++  for (let round = 0; round < TIDY_ROUNDS; round++) {
++    let improved = false;
++    for (const belt of target) {
++      const others = [...fixed, ...target.filter((b) => b.id !== belt.id).map((b) => ({ ...b, path: best!.paths.get(b.id)! }))];
++      const r = routeAll(state, others, [belt]);
++      if (!r) continue;
++      const score = scoreLayout(state, r.belts);
++      if (weight(score) < weight(best.score) - 1e-9) {
++        best.paths.set(belt.id, r.out.get(belt.id)!);
++        best.score = score;
++        improved = true;
++      }
++    }
++    if (!improved) break;
++  }
++
++  if (weight(best.score) >= weight(before) - 1e-9) return null; // already as tidy as we can make it
++
++  const routes: TidyPlan['routes'] = new Map();
++  let oldTiles = 0;
++  let newTiles = 0;
++  for (const belt of target) {
++    const path = best.paths.get(belt.id)!;
++    const { points, length } = beltPoints(getBuilding(state, belt.from)!, getBuilding(state, belt.to)!, path);
++    routes.set(belt.id, { path, points, length });
++    oldTiles += Math.max(1, belt.path.length);
++    newTiles += Math.max(1, path.length);
++  }
++  return {
++    ids,
++    routes,
++    before,
++    after: best.score,
++    cost: Math.max(0, newTiles - oldTiles) * BALANCE.beltCostPerTile,
++    sig: layoutSig(state),
++  };
++}
++
++/** Applies a plan made by planTidy (checks it still fits the current belts). */
++export function applyTidy(state: GameState, plan: TidyPlan): string | null {
++  if (layoutSig(state) !== plan.sig) return 'err.layoutChanged';
++  if (state.money < plan.cost) return 'err.noMoney';
++  state.money -= plan.cost;
++  state.belts = state.belts.map((b) => {
++    const r = plan.routes.get(b.id);
++    if (!r) return b;
++    const scale = b.length > 0 ? r.length / b.length : 1;
++    return { ...b, ...r, items: b.items.map((it) => ({ ...it, pos: Math.min(r.length, it.pos * scale) })) };
++  });
++  invalidateOccupancy(state);
++  return null;
++}
+diff --git a/src/core/types.ts b/src/core/types.ts
+index 5132d4c..6415d9e 100644
+--- a/src/core/types.ts
++++ b/src/core/types.ts
+@@ -103,6 +103,9 @@ export interface DailyMission {
+   claimed: boolean;
+ }
+ 
++/** how belts are drawn: all, dimmed, or only the selected building's */
++export type BeltView = 'all' | 'dim' | 'selected';
++
+ export interface Vein {
+   id: number;
+   x: number;
+@@ -141,7 +144,7 @@ export interface GameState {
+   power: { gen: number; demand: number; satisfaction: number; battery: number; batteryMax: number };
+   stats: Stats;
+   quests: { done: string[]; tutorialSkipped: boolean };
+-  settings: { lang: 'th' | 'en'; sound: boolean };
++  settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView };
+ 
+   // ---- Phase 2
+   research: { done: ResearchId[]; active: { id: ResearchId; remaining: number } | null };
+diff --git a/src/game.ts b/src/game.ts
+index 1a5e255..9178def 100644
+--- a/src/game.ts
++++ b/src/game.ts
+@@ -25,7 +25,8 @@ import { cancelResearch, startResearch } from './core/research';
+ import { localSave, type SaveStore } from './core/save';
+ import { tick, type SimEvent } from './core/sim';
+ import { buildingAt, getBuilding, isUnlocked, newGame } from './core/state';
+-import type { GameState } from './core/types';
++import type { BeltView, GameState } from './core/types';
++import { applyTidy, planTidy, type TidyPlan } from './core/tidy';
+ import { translate, type Lang } from './i18n';
+ import { sfx, setSoundEnabled, type Sfx } from './audio';
+ 
+@@ -72,6 +73,8 @@ export interface UiState {
+   tile: [number, number] | null;
+   /** ask the renderer to centre the camera on a tile */
+   focus: [number, number] | null;
++  /** a proposed belt layout waiting for the player to accept */
++  tidy: TidyPlan | null;
+ }
+ 
+ /**
+@@ -107,6 +110,7 @@ export class Game {
+     busy: false,
+     tile: null,
+     focus: null,
++    tidy: null,
+   };
+   events: SimEvent[] = [];
+   structureVersion = 0;
+@@ -351,6 +355,7 @@ export class Game {
+   // ---------------------------------------------------------------- modes
+ 
+   setMode(mode: Mode) {
++    if (mode.kind !== 'select') this.ui.tidy = null;
+     this.ui.mode = mode;
+     this.ui.linkPreview = null;
+     if (mode.kind !== 'select') {
+@@ -533,6 +538,59 @@ export class Game {
+     }
+   }
+ 
++  // ---------------------------------------------------------------- belts: tidy & view
++
++  /** plan a tidier layout (all belts, or one building's) and show it for approval */
++  previewTidy(buildingId?: number) {
++    if (this.ui.busy) return;
++    this.ui.busy = true;
++    this.ui.panel = 'none';
++    this.emit();
++    // let the UI paint "working…" before the (up to ~0.5 s) search
++    setTimeout(() => {
++      const ids = buildingId !== undefined ? this.state.belts.filter((b) => b.from === buildingId || b.to === buildingId).map((b) => b.id) : undefined;
++      const plan = this.state.belts.length ? planTidy(this.state, ids) : null;
++      this.ui.busy = false;
++      if (!plan) {
++        this.toast(this.t('ui.tidyNothing'), 'info');
++        this.emit();
++        return;
++      }
++      this.ui.tidy = plan;
++      this.ui.selected = null;
++      this.ui.tile = null;
++      this.ui.plot = null;
++      this.setMode({ kind: 'select' });
++    }, 30);
++  }
++
++  acceptTidy() {
++    const plan = this.ui.tidy;
++    if (!plan) return;
++    this.ui.tidy = null;
++    if (this.check(applyTidy(this.state, plan))) {
++      this.play('link');
++      this.toast(this.t('ui.tidyDone'), 'success');
++    }
++    this.structureChanged();
++  }
++
++  cancelTidy() {
++    this.ui.tidy = null;
++    this.emit();
++  }
++
++  get beltView(): BeltView {
++    return this.state.settings.beltView ?? 'all';
++  }
++
++  cycleBeltView() {
++    const order: BeltView[] = ['all', 'dim', 'selected'];
++    this.state.settings.beltView = order[(order.indexOf(this.beltView) + 1) % order.length];
++    this.toast(this.t(`ui.beltView.${this.beltView}`), 'info');
++    this.structureChanged();
++  }
++
+   // ---------------------------------------------------------------- phase 2
+ 
+   buyPlot() {
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 858235c..f7bd928 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -458,6 +458,24 @@ export const en = {
+ 
+   'ui.changeRecipe': 'Change recipe ({n}) ▾',
+   'ui.hideRecipes': 'Hide recipes ▴',
++
++  'ui.tidy': 'Tidy belts',
++  'ui.tidyTip': 'Re-route all belts for fewer crossings. Buildings stay put; you see a preview first.',
++  'ui.tidyThis': 'Tidy this building\'s belts',
++  'ui.tidyPreview': 'New belt layout',
++  'ui.tidyCrossings': 'Crossings',
++  'ui.tidyLength': 'Length',
++  'ui.tidyApply': 'Use this layout',
++  'ui.tidyDone': 'Belts re-routed',
++  'ui.tidyNothing': 'The belts are already as tidy as they can get. Moving buildings can open better routes.',
++  'ui.working': 'Working…',
++  'ui.beltView.all': 'Belts: show all',
++  'ui.beltView.dim': 'Belts: dimmed (selected building\'s stay bright)',
++  'ui.beltView.selected': 'Belts: only the selected building\'s',
++  'ui.beltViewShort.all': 'All',
++  'ui.beltViewShort.dim': 'Dim',
++  'ui.beltViewShort.selected': 'Selected',
++  'err.layoutChanged': 'The factory changed — make a new preview',
+ };
+ 
+ export type Dict = Record<keyof typeof en, string>;
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index 13a0388..fe79ae6 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -460,4 +460,22 @@ export const th: Dict = {
+ 
+   'ui.changeRecipe': 'เปลี่ยนสูตร ({n}) ▾',
+   'ui.hideRecipes': 'ซ่อนสูตร ▴',
++
++  'ui.tidy': 'จัดสายพาน',
++  'ui.tidyTip': 'วางสายพานใหม่ทั้งหมดให้ข้ามกันน้อยลง อาคารอยู่ที่เดิม และดูตัวอย่างก่อนยืนยัน',
++  'ui.tidyThis': 'จัดสายพานของอาคารนี้',
++  'ui.tidyPreview': 'ผังสายพานใหม่',
++  'ui.tidyCrossings': 'จุดข้าม',
++  'ui.tidyLength': 'ความยาว',
++  'ui.tidyApply': 'ใช้ผังนี้',
++  'ui.tidyDone': 'จัดสายพานใหม่แล้ว',
++  'ui.tidyNothing': 'สายพานเป็นระเบียบที่สุดแล้วสำหรับผังนี้ ลองย้ายอาคารเพื่อเปิดทางใหม่',
++  'ui.working': 'กำลังคำนวณ…',
++  'ui.beltView.all': 'สายพาน: แสดงทั้งหมด',
++  'ui.beltView.dim': 'สายพาน: แสดงจาง (ของอาคารที่เลือกยังชัด)',
++  'ui.beltView.selected': 'สายพาน: แสดงเฉพาะของอาคารที่เลือก',
++  'ui.beltViewShort.all': 'ทั้งหมด',
++  'ui.beltViewShort.dim': 'จาง',
++  'ui.beltViewShort.selected': 'ที่เลือก',
++  'err.layoutChanged': 'โรงงานเปลี่ยนไปแล้ว กดดูตัวอย่างใหม่อีกครั้ง',
+ };
+diff --git a/src/render/renderer.ts b/src/render/renderer.ts
+index 2a70dc0..808e43e 100644
+--- a/src/render/renderer.ts
++++ b/src/render/renderer.ts
+@@ -3,7 +3,7 @@ import { BALANCE, BUILDINGS, ITEMS, POWER, VEINS, beltSpeed, storageCapacity, ty
+ import { nextPlotPrice, plotForSale } from '../core/land';
+ import { plotsPerRow } from '../core/state';
+ import { gradeAt } from '../core/veins';
+-import { canPlace } from '../core/actions';
++import { canPlace, linkCarriesIn } from '../core/actions';
+ import { pointAt } from '../core/pathfind';
+ import { getBuilding, hqPosition, idx, isUnlocked } from '../core/state';
+ import type { Belt, Building } from '../core/types';
+@@ -231,7 +231,9 @@ export class Renderer {
+     this.world.position.set(this.cam.x, this.cam.y);
+     this.world.scale.set(this.cam.scale);
+ 
+-    const key = `${this.game.state.settings.lang}`;
++    const zoomBucket = this.cam.scale < 0.55 ? 'far' : 'near';
++    const ui = this.game.ui;
++    const key = `${this.game.state.settings.lang}|${this.game.beltView}|${ui.selected}|${zoomBucket}|${ui.tidy ? 'tidy' : ''}`;
+     if (this.drawnVersion !== this.game.structureVersion || this.drawnKey !== key) {
+       this.drawnVersion = this.game.structureVersion;
+       this.drawnKey = key;
+@@ -306,12 +308,89 @@ export class Renderer {
+       }
+   }
+ 
++  /** 0..1 visibility of a belt under the current view mode */
++  beltAlpha(belt: Belt): number {
++    const ui = this.game.ui;
++    if (ui.tidy) return 0.25; // the preview is drawn on top
++    const sel = ui.selected;
++    const mine = sel !== null && (belt.from === sel || belt.to === sel);
++    switch (this.game.beltView) {
++      case 'dim':
++        return mine ? 1 : 0.3;
++      case 'selected':
++        return mine ? 1 : sel === null ? 0.12 : 0;
++      default:
++        return 1;
++    }
++  }
++
++  /** colour of what a belt carries (its first accepted item), for the belt's edge */
++  private cargoColor(belt: Belt): number {
++    const s = this.game.state;
++    const from = getBuilding(s, belt.from);
++    const to = getBuilding(s, belt.to);
++    if (!from || !to) return C.beltEdge;
++    const carries = linkCarriesIn(s, from, to);
++    if (!carries.length) return C.bad;
++    if (from.type === 'warehouse' && carries.length > 3) return C.beltEdge; // mixed cargo
++    return ITEMS[carries[0]].color;
++  }
++
+   private drawBelts() {
+     const g = this.belts.clear();
+-    for (const belt of this.game.state.belts) {
++    const s = this.game.state;
++    const thin = this.cam.scale < 0.55 ? 0.6 : 1;
++    const wEdge = TILE * 0.5 * thin;
++    const wBody = TILE * 0.36 * thin;
++    const colors = new Map(s.belts.map((b) => [b.id, this.cargoColor(b)]));
++
++    for (const belt of s.belts) {
++      const a = this.beltAlpha(belt);
++      if (a <= 0) continue;
+       const pts = belt.points.flatMap(([x, y]) => [x * TILE, y * TILE]);
+-      this.strokePath(g, pts, TILE * 0.5, C.beltEdge);
+-      this.strokePath(g, pts, TILE * 0.38, C.beltBody);
++      this.strokePath(g, pts, wEdge, colors.get(belt.id)!, a * 0.75);
++      this.strokePath(g, pts, wBody, C.beltBody, a);
++    }
++
++    // bridges: where a belt runs over cells an earlier belt already uses, draw it raised
++    const seen = new Set<number>();
++    for (const belt of s.belts) {
++      const a = this.beltAlpha(belt);
++      for (let i = 0; i < belt.path.length; i++) {
++        const [x, y] = belt.path[i];
++        const k = idx(s, x, y);
++        if (!seen.has(k)) {
++          seen.add(k);
++          continue;
++        }
++        if (a <= 0) continue;
++        const prev = i > 0 ? belt.path[i - 1] : null;
++        const next = i < belt.path.length - 1 ? belt.path[i + 1] : null;
++        const [dx, dy] = next ? [next[0] - x, next[1] - y] : prev ? [x - prev[0], y - prev[1]] : [1, 0];
++        const cx = (x + 0.5) * TILE;
++        const cy = (y + 0.5) * TILE;
++        const half = TILE * 0.5;
++        const seg = [cx - dx * half, cy - dy * half, cx + dx * half, cy + dy * half];
++        g.moveTo(seg[0] + 2, seg[1] + 3).lineTo(seg[2] + 2, seg[3] + 3).stroke({ width: wEdge + 4, color: 0x000000, alpha: 0.45 * a });
++        this.strokePath(g, seg, wEdge + 2, colors.get(belt.id)!, a);
++        this.strokePath(g, seg, wBody, 0x323b48, a);
++        // rails
++        const nx = -dy * (wEdge / 2 + 0.5);
++        const ny = dx * (wEdge / 2 + 0.5);
++        g.moveTo(seg[0] + nx, seg[1] + ny).lineTo(seg[2] + nx, seg[3] + ny).moveTo(seg[0] - nx, seg[1] - ny).lineTo(seg[2] - nx, seg[3] - ny).stroke({ width: 1.5, color: 0xdfe6ee, alpha: 0.5 * a });
++      }
++    }
++
++    // tidy preview: the proposed routes, bright, over the faded current ones
++    const plan = this.game.ui.tidy;
++    if (plan) {
++      for (const belt of s.belts) {
++        const r = plan.routes.get(belt.id);
++        const points = r ? r.points : belt.points;
++        const pts = points.flatMap(([x, y]) => [x * TILE, y * TILE]);
++        this.strokePath(g, pts, wEdge, r ? C.ok : colors.get(belt.id)!, r ? 0.9 : 0.6);
++        this.strokePath(g, pts, wBody, C.beltBody, 0.9);
++      }
+     }
+   }
+ 
+@@ -446,12 +525,16 @@ export class Renderer {
+ 
+     // belt chevrons, scrolling at belt speed
+     const offset = (this.time * speed) % 1;
++    const showMoving = !this.game.ui.tidy;
+     for (const belt of s.belts) {
++      if (!showMoving || this.beltAlpha(belt) < 0.5) continue;
+       for (let d = offset; d < belt.length; d += 1) this.chevron(g, belt, d);
+     }
+ 
+     // items
+     for (const belt of s.belts) {
++      if (!showMoving || this.beltAlpha(belt) <= 0.15) continue;
++      const faded = this.beltAlpha(belt) < 1;
+       let prev = Infinity;
+       for (let i = 0; i < belt.items.length; i++) {
+         const it = belt.items[i];
+@@ -459,7 +542,7 @@ export class Renderer {
+         const pos = Math.max(it.pos, Math.min(it.pos + lead, limit));
+         prev = pos;
+         const [px, py] = pointAt(belt.points, pos);
+-        this.item(g, it.item, px * TILE, py * TILE, 6.5);
++        this.item(g, it.item, px * TILE, py * TILE, faded ? 4.5 : 6.5);
+       }
+     }
+ 
+diff --git a/src/ui/App.tsx b/src/ui/App.tsx
+index ce12264..5029dc9 100644
+--- a/src/ui/App.tsx
++++ b/src/ui/App.tsx
+@@ -4,7 +4,7 @@ import { hasStoredSession, onlineConfigured } from '../online/config';
+ import { Renderer } from '../render/renderer';
+ import { BuildDrawer } from './BuildDrawer';
+ import { GameContext } from './hooks';
+-import { BottomBar, QuestCard, QuestDoneBanner, Toasts, TopBar } from './Hud';
++import { BottomBar, MapTools, QuestCard, QuestDoneBanner, Toasts, TopBar } from './Hud';
+ import { Inspector } from './Inspector';
+ import { OfflineModal, SettingsPanel, StatsPanel, UpgradesPanel } from './Panels';
+ import { ContractsPanel, DailyPanel, FleetPanel, MarketsPanel, MenuSheet, PlotSheet, PrestigePanel, ResearchPanel } from './MetaPanels';
+@@ -64,6 +64,7 @@ export function App() {
+         <Inspector />
+         <PlotSheet />
+         <TileSheet />
++        <MapTools />
+         <BottomBar />
+         <BuildDrawer />
+         <UpgradesPanel />
+diff --git a/src/ui/Hud.tsx b/src/ui/Hud.tsx
+index b677e86..3243b4f 100644
+--- a/src/ui/Hud.tsx
++++ b/src/ui/Hud.tsx
+@@ -167,6 +167,34 @@ export function BottomBar() {
+   const buildHi = useHighlight('build-btn');
+   const linkHi = useHighlight('link-btn');
+ 
++  const plan = game.ui.tidy;
++  if (plan) {
++    const b = plan.before;
++    const a = plan.after;
++    return (
++      <div className="bottombar mode tidy-bar">
++        <div className="tidy-stats">
++          <strong>{t('ui.tidyPreview')}</strong>
++          <span className="small">
++            {t('ui.tidyCrossings')} <span className="mono">{b.crossings} → </span>
++            <span className={`mono ${a.crossings < b.crossings ? 'good' : ''}`}>{a.crossings}</span> · {t('ui.tidyLength')}{' '}
++            <span className="mono">{b.tiles} → </span>
++            <span className={`mono ${a.tiles < b.tiles ? 'good' : ''}`}>{a.tiles}</span>
++          </span>
++          <span className="small dim">{plan.cost > 0 ? `${t('ui.cost')} ${fmtMoney(plan.cost)}` : t('ui.free')}</span>
++        </div>
++        <div className="tidy-actions">
++          <button className="btn ghost" onClick={() => game.cancelTidy()}>
++            {t('ui.cancel')}
++          </button>
++          <button className="btn primary" disabled={game.state.money < plan.cost} onClick={() => game.acceptTidy()}>
++            {t('ui.tidyApply')}
++          </button>
++        </div>
++      </div>
++    );
++  }
++
+   if (mode.kind !== 'select') {
+     let hint = '';
+     if (mode.kind === 'build') {
+@@ -214,3 +242,30 @@ export function BottomBar() {
+     </div>
+   );
+ }
++
++/** floating map tools: belt view mode and tidy belts */
++export function MapTools() {
++  const game = useGame();
++  const t = useT();
++  if (game.ui.tidy || game.ui.mode.kind !== 'select' || !game.state.belts.length) return null;
++  const sheetOpen = game.ui.selected !== null || game.ui.plot || game.ui.tile;
++  const view = game.beltView;
++  return (
++    <div className={`map-tools ${sheetOpen ? 'sheet-open' : ''}`}>
++      <button className="tool-btn" onClick={() => game.cycleBeltView()} title={t(`ui.beltView.${view}`)} aria-label={t(`ui.beltView.${view}`)}>
++        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
++          <path d="M3 7h18M3 12h18M3 17h18" opacity={view === 'all' ? 1 : 0.35} />
++          {view !== 'all' && <path d="M3 12h18" />}
++        </svg>
++        <span>{t(`ui.beltViewShort.${view}`)}</span>
++      </button>
++      <button className="tool-btn" disabled={game.ui.busy} onClick={() => game.previewTidy()} title={t('ui.tidyTip')}>
++        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
++          <path d="M4 6h6l4 6h6M4 18h6l4-6" />
++          <path d="M17 9l3 3-3 3" />
++        </svg>
++        <span>{game.ui.busy ? t('ui.working') : t('ui.tidy')}</span>
++      </button>
++    </div>
++  );
++}
+diff --git a/src/ui/Inspector.tsx b/src/ui/Inspector.tsx
+index 809ab2c..1a5af98 100644
+--- a/src/ui/Inspector.tsx
++++ b/src/ui/Inspector.tsx
+@@ -31,7 +31,7 @@ export function Inspector() {
+     setConfirm(false);
+     setShowRecipes(false);
+   }, [b?.id]);
+-  if (!b || game.ui.mode.kind !== 'select') return null;
++  if (!b || game.ui.mode.kind !== 'select' || game.ui.tidy) return null;
+ 
+   const s = game.state;
+   const def = BUILDINGS[b.type];
+@@ -265,6 +265,9 @@ export function Inspector() {
+               {outs.map((x) => beltRow(x.id, x.to, 'out'))}
+               {ins.map((x) => beltRow(x.id, x.from, 'in'))}
+             </ul>
++            <button className="link-btn recipe-toggle" disabled={game.ui.busy} onClick={() => game.previewTidy(b.id)}>
++              ⇄ {t('ui.tidyThis')}
++            </button>
+           </>
+         )}
+       </div>
+diff --git a/src/ui/styles.css b/src/ui/styles.css
+index e5d5333..ce69e94 100644
+--- a/src/ui/styles.css
++++ b/src/ui/styles.css
+@@ -1537,3 +1537,73 @@ select:focus-visible {
+   color: var(--blue);
+   text-decoration: none;
+ }
++
++/* ============================================================ map tools & tidy preview */
++
++.map-tools {
++  position: absolute;
++  right: 12px;
++  bottom: calc(16px + var(--safe-bottom));
++  z-index: 9;
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++}
++.tool-btn {
++  display: flex;
++  flex-direction: column;
++  align-items: center;
++  gap: 2px;
++  width: 64px;
++  padding: 7px 4px;
++  border-radius: 12px;
++  border: 1px solid var(--edge);
++  background: var(--panel);
++  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
++  font-size: 11px;
++  font-weight: 600;
++  color: var(--text);
++}
++.tool-btn:disabled {
++  opacity: 0.6;
++}
++.inspector ~ .map-tools,
++.map-tools.sheet-open {
++  right: 364px; /* beside the desktop inspector */
++}
++.tidy-bar {
++  flex-wrap: wrap;
++  border-color: var(--green) !important;
++}
++.tidy-stats {
++  display: flex;
++  flex-direction: column;
++  gap: 2px;
++  min-width: 0;
++}
++.tidy-actions {
++  display: flex;
++  gap: 8px;
++  margin-left: auto;
++}
++@media (max-width: 720px) {
++  .map-tools {
++    bottom: calc(92px + var(--safe-bottom));
++    right: 8px;
++  }
++  .map-tools.sheet-open {
++    display: none;
++  }
++  .tool-btn {
++    width: 56px;
++  }
++  .tidy-bar {
++    width: calc(100% - 16px);
++  }
++  .tidy-actions {
++    width: 100%;
++  }
++  .tidy-actions .btn {
++    flex: 1;
++  }
++}
+diff --git a/tests/tidy.test.ts b/tests/tidy.test.ts
+new file mode 100644
+index 0000000..b526858
+--- /dev/null
++++ b/tests/tidy.test.ts
+@@ -0,0 +1,105 @@
++import { describe, expect, it } from 'vitest';
++import { BALANCE } from '../src/config/balance';
++import { createLink, moveBuilding, placeBuilding } from '../src/core/actions';
++import { tick } from '../src/core/sim';
++import { newGame } from '../src/core/state';
++import type { GameState } from '../src/core/types';
++import { applyTidy, planTidy, scoreLayout } from '../src/core/tidy';
++
++const run = (s: GameState, seconds: number) => {
++  for (let t = 0; t < seconds; t += BALANCE.tickSeconds) tick(s, BALANCE.tickSeconds);
++};
++
++/**
++ * Two rows of warehouses linked "crosswise" in a deliberately bad order, so the
++ * one-at-a-time router produces crossings.
++ */
++function messy() {
++  const s = newGame(11);
++  s.money = 1e6;
++  s.world.deposits = s.world.deposits.map(() => null); // clear ore so placement is free
++  s.world.grade = s.world.grade.map(() => 0);
++  const top = [10, 12, 14, 16].map((x) => placeBuilding(s, 'warehouse', x, 9));
++  const bottom = [10, 12, 14, 16].map((x) => placeBuilding(s, 'warehouse', x, 21));
++  const ids = (arr: typeof top) => arr.map((r) => (r.ok ? r.value.id : 0));
++  const t = ids(top);
++  const b = ids(bottom);
++  // reversed pairing: left-top → right-bottom etc., created in an awkward order
++  for (const [i, j] of [
++    [0, 3],
++    [3, 0],
++    [1, 2],
++    [2, 1],
++    [0, 1],
++    [3, 2],
++  ])
++    expect(createLink(s, t[i], b[j]).ok).toBe(true);
++  // give belts something to carry
++  for (const r of top) if (r.ok) r.value.input = { iron_bar: 40 };
++  run(s, 10);
++  return s;
++}
++
++describe('tidy belts', () => {
++  it('finds a layout with fewer crossings and keeps every item', () => {
++    const s = messy();
++    const before = scoreLayout(s);
++    expect(before.crossings).toBeGreaterThan(0);
++    const items = s.belts.reduce((a, b) => a + b.items.length, 0);
++
++    const plan = planTidy(s);
++    expect(plan).not.toBeNull();
++    expect(plan!.after.crossings).toBeLessThanOrEqual(before.crossings);
++    expect(plan!.after.crossings * 100 + plan!.after.tiles).toBeLessThan(before.crossings * 100 + before.tiles);
++
++    const money = s.money;
++    expect(applyTidy(s, plan!)).toBeNull();
++    expect(s.money).toBe(money - plan!.cost);
++    expect(scoreLayout(s)).toEqual(plan!.after);
++    expect(s.belts.reduce((a, b) => a + b.items.length, 0)).toBe(items);
++    for (const b of s.belts) for (const it of b.items) expect(it.pos).toBeLessThanOrEqual(b.length);
++  });
++
++  it('the factory keeps delivering after tidying', () => {
++    const s = messy();
++    const plan = planTidy(s)!;
++    applyTidy(s, plan);
++    const got = () => s.buildings.filter((b) => b.y === 21).reduce((a, b) => a + (b.input.iron_bar ?? 0), 0);
++    const g0 = got();
++    run(s, 20);
++    expect(got()).toBeGreaterThan(g0 + 10);
++  });
++
++  it('does not change the state while planning, and a second pass finds nothing better', () => {
++    const s = messy();
++    const snap = JSON.stringify(s.belts);
++    const plan = planTidy(s)!;
++    expect(JSON.stringify(s.belts)).toBe(snap);
++    applyTidy(s, plan);
++    const again = planTidy(s);
++    if (again) expect(again.after.crossings).toBeLessThanOrEqual(plan.after.crossings);
++  });
++
++  it('refuses a stale plan after the layout changed', () => {
++    const s = messy();
++    const plan = planTidy(s)!;
++    const w = s.buildings.find((b) => b.type === 'warehouse')!;
++    expect(moveBuilding(s, w.id, w.x, w.y + 3).ok).toBe(true);
++    expect(applyTidy(s, plan)).toBe('err.layoutChanged');
++  });
++
++  it('can tidy just one building\'s belts', () => {
++    const s = messy();
++    const w = s.buildings.find((b) => b.type === 'warehouse')!;
++    const mine = s.belts.filter((b) => b.from === w.id || b.to === w.id).map((b) => b.id);
++    const others = JSON.stringify(s.belts.filter((b) => !mine.includes(b.id)).map((b) => b.path));
++    const plan = planTidy(s, mine);
++    if (plan) applyTidy(s, plan);
++    expect(JSON.stringify(s.belts.filter((b) => !mine.includes(b.id)).map((b) => b.path))).toBe(others);
++  });
++
++  it('returns null when there is nothing to improve', () => {
++    const s = newGame(1);
++    expect(planTidy(s)).toBeNull();
++  });
++});

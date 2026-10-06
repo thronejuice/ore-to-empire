@@ -52,6 +52,8 @@ function build(tag) {
     execFileSync('npx', ['vite', 'build', '--mode', 'single', '--outDir', join(tmp, 'dist'), '--logLevel', 'error'], { cwd: wt, stdio: 'inherit' });
     let html = readFileSync(join(tmp, 'dist', 'index.html'), 'utf8');
     html = html.replace(/ore-to-empire\/save(?!\/)/g, `ore-to-empire/save/${tag}`);
+    // builds before v0.7.1 had a hard-coded version label; show the real one
+    html = html.replace(/Ore to Empire · (?:Phase 1 · )?v\d+\.\d+\.\d+/g, `Ore to Empire · ${tag}`);
     writeFileSync(join(out, 'index.html'), html);
   } finally {
     git('worktree', 'remove', '--force', wt);

@@ -1,0 +1,337 @@
+diff --git a/README.md b/README.md
+index 133c7d4..8aa4b1d 100644
+--- a/README.md
++++ b/README.md
+@@ -20,7 +20,7 @@ To turn on accounts, cloud saves and the gem store, follow **[docs/SETUP-PHASE4.
+ ## What's in the game
+ 
+ - **Production:** 21 items over 5 tiers (ore → bars/steel/glass → parts → motors/circuits/engines → robot arms, computers, EVs). Drills, furnaces, assemblers, 2×2 fabricators.
+-- **Logistics:** tap-to-connect belts with auto-routing, move any building (belts re-route and keep their cargo), warehouses, loading docks; trucks, trains and ships to 5 markets with demand-driven prices and news events.
++- **Logistics:** tap-to-connect belts with auto-routing, move any building (free for 1 min after building, then 10% of its value; belts re-route and keep their cargo), warehouses, loading docks; trucks, trains and ships to 5 markets with demand-driven prices and news events.
+ - **Power:** HQ grid, coal, solar, batteries, nuclear. Shortage slows every machine.
+ - **Ore:** every deposit tile has a grade (low ×0.6 / normal / high ×1.5). Rich veins (×3, limited amount, low-ore warning) appear while you play and pause while you're away.
+ - **Land:** buy adjacent plots; sand and uranium only exist on bought land.
+diff --git a/src/config/balance.ts b/src/config/balance.ts
+index bc05d52..a80f760 100644
+--- a/src/config/balance.ts
++++ b/src/config/balance.ts
+@@ -220,6 +220,7 @@ export type ResearchId =
+   | 'r_belts_2'
+   | 'r_rail'
+   | 'r_efficiency_1'
++  | 'r_logistics'
+   | 'r_battery'
+   | 'r_engine'
+   | 'r_containers'
+@@ -246,6 +247,7 @@ export interface ResearchDef {
+   powerSave?: number; // −x power use
+   beltMax?: number; // new max belt level
+   capacity?: number; // +x vehicle capacity
++  moveDiscount?: number; // −x moving fees
+ }
+ 
+ const r = (id: ResearchId, tier: number, cost: number, time: number, requires: ResearchId[], extra: Partial<ResearchDef> = {}): ResearchDef => ({
+@@ -269,6 +271,7 @@ export const RESEARCH: Record<ResearchId, ResearchDef> = {
+   r_belts_2: r('r_belts_2', 1, 10000, 180, ['r_automation_1'], { beltMax: 5 }),
+   r_rail: r('r_rail', 1, 25000, 300, ['r_trucks']),
+   r_efficiency_1: r('r_efficiency_1', 1, 15000, 240, ['r_automation_1'], { powerSave: 0.15 }),
++  r_logistics: r('r_logistics', 1, 12000, 180, ['r_automation_1'], { moveDiscount: 0.5 }),
+ 
+   r_battery: r('r_battery', 2, 40000, 480, ['r_fabricator', 'r_solar']),
+   r_engine: r('r_engine', 2, 50000, 480, ['r_fabricator']),
+@@ -491,3 +494,14 @@ export const VEINS = {
+   lowFraction: 0.25, // "running low" warning
+   amount: { iron_ore: 1500, copper_ore: 1200, coal: 1000, sand: 1000, uranium_ore: 300 } as Record<DepositId, number>,
+ };
++
++// =============================================================================
++// Moving buildings
++// =============================================================================
++
++export const MOVE = {
++  rate: 0.1, // fee = 10 % of what the building is worth (build + upgrades)
++  min: 10,
++  hqFee: 1000, // the HQ costs nothing to build, so it has a flat fee
++  freeSeconds: 60, // moving right after building is free (fixing a misplacement)
++};
+diff --git a/src/core/actions.ts b/src/core/actions.ts
+index a848829..3d3a467 100644
+--- a/src/core/actions.ts
++++ b/src/core/actions.ts
+@@ -1,6 +1,8 @@
+ import {
+   BALANCE,
+   BUILDINGS,
++  MOVE,
++  RESEARCH,
+   ITEMS,
+   RECIPES,
+   beltUpgradeCost,
+@@ -67,6 +69,8 @@ export function moveBuilding(state: GameState, id: number, x: number, y: number)
+   if (b.x === x && b.y === y) return fail('err.samePlace');
+   const check = canPlace(state, b.type, x, y, b);
+   if (!check.ok) return check;
++  const fee = moveFee(state, b);
++  if (state.money < fee) return fail('err.noMoney');
+ 
+   const own = state.belts.filter((belt) => belt.from === id || belt.to === id);
+   const oldPos = { x: b.x, y: b.y };
+@@ -100,7 +104,7 @@ export function moveBuilding(state: GameState, id: number, x: number, y: number)
+     state.belts.push(nb); // later belts see this one (they may bridge over it)
+     newTiles += Math.max(1, path.length);
+   }
+-  const cost = Math.max(0, newTiles - oldTiles) * BALANCE.beltCostPerTile;
++  const cost = fee + Math.max(0, newTiles - oldTiles) * BALANCE.beltCostPerTile;
+   if (state.money < cost) {
+     state.belts = state.belts.filter((x2) => !rerouted.includes(x2));
+     state.belts.push(...own);
+@@ -139,6 +143,22 @@ export function removeBuilding(state: GameState, id: number): ActionResult<numbe
+   return ok(refund);
+ }
+ 
++/** seconds left in the free-move window after building, or 0 */
++export function freeMoveLeft(state: GameState, b: Building): number {
++  if (b.placedAt === undefined) return 0;
++  return Math.max(0, MOVE.freeSeconds - (state.time - b.placedAt));
++}
++
++/** fee for moving a building (belt tiles beyond the old lengths are extra) */
++export function moveFee(state: GameState, b: Building): number {
++  if (freeMoveLeft(state, b) > 0) return 0;
++  let discount = 0;
++  for (const id of state.research.done) discount += RESEARCH[id].moveDiscount ?? 0;
++  const mult = Math.max(0, 1 - discount);
++  const base = b.type === 'hq' ? MOVE.hqFee : Math.max(MOVE.min, totalInvested(b) * MOVE.rate);
++  return Math.round(base * mult);
++}
++
+ export function totalInvested(b: Building): number {
+   let sum = BUILDINGS[b.type].cost;
+   for (let l = 1; l < b.level; l++) sum += upgradeCost(b.type, l);
+diff --git a/src/core/state.ts b/src/core/state.ts
+index 5609877..30f407c 100644
+--- a/src/core/state.ts
++++ b/src/core/state.ts
+@@ -256,6 +256,7 @@ export function makeBuilding(state: GameState, type: BuildingType, x: number, y:
+     burn: 0,
+     status: 'idle',
+     rr: 0,
++    placedAt: state.time,
+   };
+ }
+ 
+diff --git a/src/core/types.ts b/src/core/types.ts
+index df54414..5132d4c 100644
+--- a/src/core/types.ts
++++ b/src/core/types.ts
+@@ -25,6 +25,8 @@ export interface Building {
+   recv?: number;
+   status: BuildingStatus;
+   rr: number;
++  /** game time when built (moves are free for a short while after) */
++  placedAt?: number;
+ }
+ 
+ export interface BeltItem {
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 4ae764b..a04f0f0 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -430,7 +430,7 @@ export const en = {
+   'err.alreadyBought': 'You already bought the starter pack',
+ 
+   'ui.move': 'Move',
+-  'ui.moveTip': 'Move this building (M). Belts follow it.',
++  'ui.moveTip': 'Move this building (M). Belts follow it. Free for 1 minute after building, then 10% of its value.',
+   'ui.moveHint': 'Tap the new spot for the {name}',
+   'err.cantReroute': 'Belts can\'t reach that spot',
+   'err.samePlace': 'It\'s already here',
+@@ -449,6 +449,12 @@ export const en = {
+   'ui.veinLow': 'Your rich {ore} vein is running low',
+   'ui.veinDepleted': 'The rich {ore} vein is mined out — the tile is a normal deposit again',
+   'ui.veinExpired': 'A rich {ore} vein faded away',
++
++  'ui.moveFree': 'free {time}',
++  'ui.free': 'free',
++  'ui.effectMove': '−{pct}% moving fees',
++  'r.r_logistics.t': 'Plant Logistics',
++  'r.r_logistics.d': 'Cheaper to move machines around the factory.',
+ };
+ 
+ export type Dict = Record<keyof typeof en, string>;
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index c82e3ab..50bbe7a 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -432,7 +432,7 @@ export const th: Dict = {
+   'err.alreadyBought': 'คุณซื้อแพ็กเริ่มต้นไปแล้ว',
+ 
+   'ui.move': 'ย้าย',
+-  'ui.moveTip': 'ย้ายอาคารนี้ (กด M) สายพานจะย้ายตามไปด้วย',
++  'ui.moveTip': 'ย้ายอาคารนี้ (กด M) สายพานย้ายตามไปด้วย ย้ายฟรีภายใน 1 นาทีหลังสร้าง หลังจากนั้นคิด 10% ของมูลค่าอาคาร',
+   'ui.moveHint': 'แตะตำแหน่งใหม่ของ{name}',
+   'err.cantReroute': 'สายพานไปถึงตำแหน่งนั้นไม่ได้',
+   'err.samePlace': 'อยู่ตำแหน่งนี้อยู่แล้ว',
+@@ -451,4 +451,10 @@ export const th: Dict = {
+   'ui.veinLow': 'สายแร่{ore}ร่ำรวยใกล้หมดแล้ว',
+   'ui.veinDepleted': 'สายแร่{ore}ร่ำรวยหมดแล้ว ช่องนี้กลับเป็นสายแร่ปกติ',
+   'ui.veinExpired': 'สายแร่{ore}ร่ำรวยหายไปแล้ว',
++
++  'ui.moveFree': 'ฟรี {time}',
++  'ui.free': 'ฟรี',
++  'ui.effectMove': 'ค่าย้ายลดลง {pct}%',
++  'r.r_logistics.t': 'โลจิสติกส์ภายในโรงงาน',
++  'r.r_logistics.d': 'ย้ายเครื่องจักรภายในโรงงานได้ถูกลง',
+ };
+diff --git a/src/ui/Hud.tsx b/src/ui/Hud.tsx
+index 3fffb45..b677e86 100644
+--- a/src/ui/Hud.tsx
++++ b/src/ui/Hud.tsx
+@@ -2,6 +2,7 @@ import { BUILDINGS } from '../config/balance';
+ import { QUESTS, currentQuest, currentQuestIndex } from '../core/quests';
+ import { incomePerMinute } from '../core/sim';
+ import { boostActive } from '../core/economy';
++import { moveFee } from '../core/actions';
+ import { fmtClock, fmtMoney, fmtNum } from '../i18n';
+ import { GemIcon, NAV, NavIcon } from './nav';
+ import { useGame, useHighlight, useT } from './hooks';
+@@ -177,6 +178,10 @@ export function BottomBar() {
+     } else if (mode.kind === 'move') {
+       const mb = game.state.buildings.find((x) => x.id === mode.id);
+       hint = t('ui.moveHint', { name: mb ? t(`b.${mb.type}`) : '' });
++      if (mb) {
++        const fee = moveFee(game.state, mb);
++        hint += ` · ${fee > 0 ? fmtMoney(fee) : t('ui.free')}`;
++      }
+     } else {
+       hint = mode.from === null ? t('ui.linkPickSource') : t('ui.linkPickTarget');
+       const p = game.ui.linkPreview;
+diff --git a/src/ui/Inspector.tsx b/src/ui/Inspector.tsx
+index 02284c0..5a00590 100644
+--- a/src/ui/Inspector.tsx
++++ b/src/ui/Inspector.tsx
+@@ -14,9 +14,9 @@ import {
+ import { globalSpeed, powerMult, recipeUnlocked } from '../core/economy';
+ import { tileMult } from '../core/veins';
+ import { OreInfo } from './TileSheet';
+-import { isUpgradable, linkCarriesIn, totalInvested } from '../core/actions';
++import { freeMoveLeft, isUpgradable, linkCarriesIn, moveFee, totalInvested } from '../core/actions';
+ import { getBuilding, invTotal } from '../core/state';
+-import { fmtMoney, fmtNum } from '../i18n';
++import { fmtClock, fmtMoney, fmtNum } from '../i18n';
+ import { useGame, useHighlight, useT } from './hooks';
+ import { BuildingIcon, Inv, ItemIcon } from './icons';
+ 
+@@ -37,6 +37,8 @@ export function Inspector() {
+   const nextCost = upgradeCost(b.type, b.level);
+   const canUp = isUpgradable(b) && b.level < BALANCE.maxBuildingLevel;
+   const refund = Math.floor(totalInvested(b) * BALANCE.refundRate);
++  const mvFee = moveFee(s, b);
++  const freeLeft = freeMoveLeft(s, b);
+   const statusClass = b.status === 'working' ? 'good' : b.status === 'output_full' || b.status === 'no_fuel' ? 'bad' : 'warn';
+ 
+   let body: React.ReactNode = null;
+@@ -226,8 +228,9 @@ export function Inspector() {
+             ⇢ {t('ui.link')}
+           </button>
+         )}
+-        <button className="btn" onClick={() => game.startMove(b.id)} title={t('ui.moveTip')}>
+-          ✥ {t('ui.move')}
++        <button className="btn" disabled={s.money < mvFee} onClick={() => game.startMove(b.id)} title={t('ui.moveTip')}>
++          ✥ {t('ui.move')}{' '}
++          {freeLeft > 0 ? <span className="mono good">{t('ui.moveFree', { time: fmtClock(freeLeft) })}</span> : <span className="mono">{fmtMoney(mvFee)}</span>}
+         </button>
+         {isUpgradable(b) && (
+           <button className="btn" disabled={!canUp || s.money < nextCost} onClick={() => game.upgrade(b.id)}>
+diff --git a/src/ui/MetaPanels.tsx b/src/ui/MetaPanels.tsx
+index f6473c6..f59e1d4 100644
+--- a/src/ui/MetaPanels.tsx
++++ b/src/ui/MetaPanels.tsx
+@@ -72,6 +72,7 @@ export function ResearchPanel() {
+                 if (def.powerSave) effects.push(t('ui.effectPower', { pct: Math.round(def.powerSave * 100) }));
+                 if (def.beltMax) effects.push(t('ui.effectBelt', { n: def.beltMax }));
+                 if (def.capacity) effects.push(t('ui.effectCapacity', { pct: Math.round(def.capacity * 100) }));
++                if (def.moveDiscount) effects.push(t('ui.effectMove', { pct: Math.round(def.moveDiscount * 100) }));
+                 const missing = def.requires.filter((r) => !s.research.done.includes(r));
+                 return (
+                   <div key={id} className={`node ${st}`}>
+diff --git a/tests/move.test.ts b/tests/move.test.ts
+index c4c4051..90c5771 100644
+--- a/tests/move.test.ts
++++ b/tests/move.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from 'vitest';
+-import { BALANCE, type DepositId } from '../src/config/balance';
+-import { createLink, moveBuilding, placeBuilding, upgradeBuilding } from '../src/core/actions';
++import { BALANCE, MOVE, type DepositId } from '../src/config/balance';
++import { createLink, freeMoveLeft, moveBuilding, moveFee, placeBuilding, totalInvested, upgradeBuilding } from '../src/core/actions';
+ import { tick } from '../src/core/sim';
+ import { buildingAt, idx, newGame } from '../src/core/state';
+ import type { GameState } from '../src/core/types';
+@@ -135,3 +135,66 @@ describe('moving buildings', () => {
+     expect(s.stats.sold.iron_bar ?? 0).toBeGreaterThan(0);
+   });
+ });
++
++describe('moving fees', () => {
++  // chain() runs 30 s, so its buildings are still inside the free window
++  const pastFreeWindow = (s: GameState) => run(s, MOVE.freeSeconds);
++
++  it('is free right after building', () => {
++    const { s, furnace } = chain();
++    expect(freeMoveLeft(s, furnace)).toBeGreaterThan(0);
++    expect(moveFee(s, furnace)).toBe(0);
++    const money = s.money;
++    const [nx, ny] = emptyTile(s, [furnace.x + 2, furnace.y]);
++    const r = moveBuilding(s, furnace.id, nx, ny);
++    if (!r.ok) throw new Error(r.reason);
++    expect(s.money).toBeCloseTo(money - r.value.cost, 5);
++    expect(r.value.cost).toBeLessThan(30); // no fee: only a few extra belt tiles, if any
++  });
++
++  it('then costs 10% of build + upgrades, and is charged', () => {
++    const { s, furnace } = chain();
++    pastFreeWindow(s);
++    // furnace Lv 3: 100 + 180 + 324 = 604 → $60
++    expect(totalInvested(furnace)).toBe(604);
++    expect(moveFee(s, furnace)).toBe(60);
++    const money = s.money;
++    const [nx, ny] = emptyTile(s, [furnace.x + 2, furnace.y]);
++    const r = moveBuilding(s, furnace.id, nx, ny);
++    if (!r.ok) throw new Error(r.reason);
++    expect(r.value.cost).toBeGreaterThanOrEqual(60);
++    expect(money - s.money).toBeCloseTo(r.value.cost, 0); // the sim may sell something meanwhile; within $1
++  });
++
++  it('has a $10 minimum and a flat HQ fee', () => {
++    const { s, miner } = chain();
++    pastFreeWindow(s);
++    expect(moveFee(s, miner)).toBe(MOVE.min); // 10 % of $40 = $4 → $10
++    expect(moveFee(s, hq(s))).toBe(MOVE.hqFee);
++  });
++
++  it('research halves the fee', () => {
++    const { s, furnace } = chain();
++    pastFreeWindow(s);
++    s.research.done.push('r_logistics');
++    expect(moveFee(s, furnace)).toBe(30);
++    expect(moveFee(s, hq(s))).toBe(MOVE.hqFee / 2);
++  });
++
++  it('refuses without enough money and changes nothing', () => {
++    const { s, furnace } = chain();
++    pastFreeWindow(s);
++    s.money = 10;
++    const pos = [furnace.x, furnace.y];
++    const [nx, ny] = emptyTile(s, [furnace.x + 2, furnace.y]);
++    expect(moveBuilding(s, furnace.id, nx, ny)).toEqual({ ok: false, reason: 'err.noMoney' });
++    expect([furnace.x, furnace.y]).toEqual(pos);
++    expect(s.money).toBe(10);
++  });
++
++  it('old saves (no build time) pay the normal fee', () => {
++    const { s, furnace } = chain();
++    delete furnace.placedAt;
++    expect(moveFee(s, furnace)).toBe(60);
++  });
++});

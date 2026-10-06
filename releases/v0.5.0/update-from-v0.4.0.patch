@@ -1,0 +1,1008 @@
+diff --git a/README.md b/README.md
+index cfd15e3..133c7d4 100644
+--- a/README.md
++++ b/README.md
+@@ -22,6 +22,7 @@ To turn on accounts, cloud saves and the gem store, follow **[docs/SETUP-PHASE4.
+ - **Production:** 21 items over 5 tiers (ore → bars/steel/glass → parts → motors/circuits/engines → robot arms, computers, EVs). Drills, furnaces, assemblers, 2×2 fabricators.
+ - **Logistics:** tap-to-connect belts with auto-routing, move any building (belts re-route and keep their cargo), warehouses, loading docks; trucks, trains and ships to 5 markets with demand-driven prices and news events.
+ - **Power:** HQ grid, coal, solar, batteries, nuclear. Shortage slows every machine.
++- **Ore:** every deposit tile has a grade (low ×0.6 / normal / high ×1.5). Rich veins (×3, limited amount, low-ore warning) appear while you play and pause while you're away.
+ - **Land:** buy adjacent plots; sand and uranium only exist on bought land.
+ - **Research:** 23 timed projects in 5 tiers (keeps running offline).
+ - **Meta:** tutorial + guided quests, contracts, 3 daily missions (gems), prestige ("sell the company" for shares and perks), gem items (time skip, income ×2, offline cap).
+diff --git a/src/config/balance.ts b/src/config/balance.ts
+index 5ca3b1b..bc05d52 100644
+--- a/src/config/balance.ts
++++ b/src/config/balance.ts
+@@ -474,3 +474,20 @@ export function allRecipesFor(type: BuildingType): RecipeId[] {
+ /** Phase-1 alias kept for older imports */
+ export const speedMult = levelSpeed;
+ export const powerDraw = levelPower;
++
++// =============================================================================
++// Ore grades & rich veins
++// =============================================================================
++
++/** grade index stored per tile: 0 = low, 1 = normal, 2 = high */
++export const GRADE_MULT = [0.6, 1, 1.5] as const;
++
++export const VEINS = {
++  mult: 3, // extra speed on a rich vein (on top of the tile's grade)
++  maxActive: 2,
++  firstAfter: 180, // seconds of play before the first vein (after the tutorial)
++  interval: [480, 900] as [number, number], // seconds between new veins
++  unclaimedTtl: 1200, // a vein no drill touches disappears after 20 min
++  lowFraction: 0.25, // "running low" warning
++  amount: { iron_ore: 1500, copper_ore: 1200, coal: 1000, sand: 1000, uranium_ore: 300 } as Record<DepositId, number>,
++};
+diff --git a/src/core/offline.ts b/src/core/offline.ts
+index eba03de..0ef0c9d 100644
+--- a/src/core/offline.ts
++++ b/src/core/offline.ts
+@@ -3,6 +3,7 @@ import { offlineCapHours } from './economy';
+ import { invTotal } from './state';
+ import { tick, tickMacro } from './sim';
+ import type { Building, GameState, Inventory } from './types';
++import { veinsEnabled } from './veins';
+ 
+ export interface OfflineReport {
+   seconds: number; // absence credited (after the cap)
+@@ -28,6 +29,17 @@ export interface OfflineReport {
+  */
+ export function applyOffline(state: GameState, awaySeconds: number, opts: { ignoreCap?: boolean } = {}): OfflineReport | null {
+   if (!(awaySeconds > 0)) return null; // also catches clocks moved backwards (negative)
++  // rich veins pause while away: they neither drain nor boost the extrapolated income
++  const veinsWere = veinsEnabled.on;
++  veinsEnabled.on = false;
++  try {
++    return simulateOffline(state, awaySeconds, opts);
++  } finally {
++    veinsEnabled.on = veinsWere;
++  }
++}
++
++function simulateOffline(state: GameState, awaySeconds: number, opts: { ignoreCap?: boolean }): OfflineReport {
+   const cap = opts.ignoreCap ? Infinity : offlineCapHours(state) * 3600;
+   const seconds = Math.min(awaySeconds, cap);
+   const dt = BALANCE.tickSeconds;
+diff --git a/src/core/save.ts b/src/core/save.ts
+index 36c9a21..bee6c9c 100644
+--- a/src/core/save.ts
++++ b/src/core/save.ts
+@@ -1,5 +1,5 @@
+-import { POWER } from '../config/balance';
+-import { SAVE_VERSION, addRareDeposits, freshMarkets } from './state';
++import { POWER, VEINS } from '../config/balance';
++import { SAVE_VERSION, addRareDeposits, freshMarkets, generateGrades } from './state';
+ import type { GameState } from './types';
+ 
+ const KEY = 'ore-to-empire/save';
+@@ -65,6 +65,13 @@ export function migrate(data: GameState): GameState | null {
+     d.offlineBonusHours = 0;
+     d.version = 2;
+   }
++  if (d.version < 3) {
++    // ore grades + rich veins
++    d.world.grade = generateGrades(d.world.deposits, d.world.size, d.seed);
++    d.veins = [];
++    d.veinTimer = VEINS.firstAfter;
++    d.version = 3;
++  }
+   return d;
+ }
+ 
+diff --git a/src/core/sim.ts b/src/core/sim.ts
+index 3f05c4e..f6da8fd 100644
+--- a/src/core/sim.ts
++++ b/src/core/sim.ts
+@@ -17,13 +17,15 @@ import { tickFleet } from './fleet';
+ import { sell, tickMarkets } from './market';
+ import { tickResearch } from './research';
+ import { invTotal } from './state';
++import { mineFromVein, tickVeins, tileMult, type VeinEvent } from './veins';
+ import type { Belt, Building, Contract, GameState, Inventory } from './types';
+ 
+ export type SimEvent =
+   | { type: 'sold'; buildingId: number; item: ItemId; amount: number }
+   | { type: 'research'; id: ResearchId }
+   | { type: 'contract_done'; contract: Contract }
+-  | { type: 'contract_expired'; contract: Contract };
++  | { type: 'contract_expired'; contract: Contract }
++  | VeinEvent;
+ 
+ export { incomePerMinute };
+ 
+@@ -128,7 +130,7 @@ export function updatePower(state: GameState, dt: number) {
+   state.power.batteryMax = batteries.length * POWER.batteryCapacity;
+ }
+ 
+-function updateBuilding(state: GameState, b: Building, dt: number, speed: number) {
++function updateBuilding(state: GameState, b: Building, dt: number, speed: number, events?: SimEvent[]) {
+   const sat = state.power.satisfaction;
+ 
+   if (b.type === 'miner') {
+@@ -146,7 +148,7 @@ function updateBuilding(state: GameState, b: Building, dt: number, speed: number
+       return;
+     }
+     b.status = 'working';
+-    b.progress += (dt * sat * speed * levelSpeed(b.level)) / BALANCE.minerTime;
++    b.progress += (dt * sat * speed * levelSpeed(b.level) * tileMult(state, b.x, b.y)) / BALANCE.minerTime;
+     while (b.progress >= 1) {
+       if (invTotal(b.output) >= BALANCE.outputBufferTotal) {
+         b.progress = 1;
+@@ -156,6 +158,7 @@ function updateBuilding(state: GameState, b: Building, dt: number, speed: number
+       b.progress -= 1;
+       add(b.output, dep, 1);
+       add(state.stats.produced, dep, 1);
++      mineFromVein(state, b.x, b.y, events as VeinEvent[] | undefined);
+     }
+     return;
+   }
+@@ -297,7 +300,7 @@ export function tick(state: GameState, dt: number, events?: SimEvent[]) {
+   updatePower(state, dt);
+ 
+   const speed = globalSpeed(state);
+-  for (const b of state.buildings) updateBuilding(state, b, dt, speed);
++  for (const b of state.buildings) updateBuilding(state, b, dt, speed, events);
+ 
+   const byId = new Map<number, Building>();
+   for (const b of state.buildings) byId.set(b.id, b);
+@@ -315,6 +318,7 @@ export function tick(state: GameState, dt: number, events?: SimEvent[]) {
+   }
+ 
+   tickMacro(state, dt, events);
++  tickVeins(state, dt, events as VeinEvent[] | undefined);
+ 
+   const st = state.stats;
+   st.bucketTime += dt;
+diff --git a/src/core/state.ts b/src/core/state.ts
+index 3411af9..5609877 100644
+--- a/src/core/state.ts
++++ b/src/core/state.ts
+@@ -1,8 +1,8 @@
+-import { BALANCE, BUILDINGS, CITY_ORDER, ITEMS, POWER, type BuildingType, type DepositId, type ItemId } from '../config/balance';
++import { BALANCE, BUILDINGS, CITY_ORDER, ITEMS, POWER, VEINS, type BuildingType, type DepositId, type ItemId } from '../config/balance';
+ import type { MarketState } from './types';
+ import type { Building, GameState } from './types';
+ 
+-export const SAVE_VERSION = 2;
++export const SAVE_VERSION = 3;
+ 
+ export function mulberry32(seed: number) {
+   let a = seed >>> 0;
+@@ -139,6 +139,34 @@ export function addRareDeposits(deposits: (DepositId | null)[], size: number, se
+   }
+ }
+ 
++/**
++ * Ore grade per tile. Tiles deep inside a cluster tend to be rich, lone edge
++ * tiles poor; land you have to buy leans richer. Own RNG stream, so it can be
++ * generated for older saves too.
++ */
++export function generateGrades(deposits: (DepositId | null)[], size: number, seed: number): number[] {
++  const rand = mulberry32(seed ^ 0x1b873593);
++  const grade = new Array(size * size).fill(0);
++  const start = BALANCE.plotSize; // the four starting plots span [start, 3*start)
++  for (let y = 0; y < size; y++)
++    for (let x = 0; x < size; x++) {
++      const d = deposits[y * size + x];
++      if (!d) continue;
++      let same = 0;
++      for (let dy = -1; dy <= 1; dy++)
++        for (let dx = -1; dx <= 1; dx++) {
++          if (!dx && !dy) continue;
++          const nx = x + dx;
++          const ny = y + dy;
++          if (nx >= 0 && ny >= 0 && nx < size && ny < size && deposits[ny * size + nx] === d) same++;
++        }
++      const outer = x < start || y < start || x >= 3 * start || y >= 3 * start;
++      const score = same + (rand() - 0.5) * 3 + (outer ? 1.2 : 0);
++      grade[y * size + x] = score >= 5 ? 2 : score <= 1.5 ? 0 : 1;
++    }
++  return grade;
++}
++
+ export function freshMarkets(): Partial<Record<(typeof CITY_ORDER)[number], MarketState>> {
+   const out: Partial<Record<(typeof CITY_ORDER)[number], MarketState>> = {};
+   for (const c of CITY_ORDER) {
+@@ -164,6 +192,7 @@ export function newGame(seed = Math.floor(Math.random() * 1e9), now = Date.now()
+   const plots = new Array(plotsPerRow * plotsPerRow).fill(false);
+   for (const [px, py] of BALANCE.startPlots) plots[py * plotsPerRow + px] = true;
+ 
++  const deposits = generateDeposits(size, seed);
+   const state: GameState = {
+     version: SAVE_VERSION,
+     seed,
+@@ -171,7 +200,9 @@ export function newGame(seed = Math.floor(Math.random() * 1e9), now = Date.now()
+     time: 0,
+     lastSaved: now,
+     maxSeenTime: now,
+-    world: { size, deposits: generateDeposits(size, seed), plots },
++    world: { size, deposits, grade: generateGrades(deposits, size, seed), plots },
++    veins: [],
++    veinTimer: VEINS.firstAfter,
+     buildings: [],
+     belts: [],
+     nextId: 1,
+diff --git a/src/core/types.ts b/src/core/types.ts
+index 539fd23..df54414 100644
+--- a/src/core/types.ts
++++ b/src/core/types.ts
+@@ -101,6 +101,18 @@ export interface DailyMission {
+   claimed: boolean;
+ }
+ 
++export interface Vein {
++  id: number;
++  x: number;
++  y: number;
++  type: DepositId;
++  amount: number;
++  total: number;
++  /** seconds left before an unclaimed vein disappears */
++  ttl: number;
++  warned: boolean;
++}
++
+ export interface GameState {
+   version: number;
+   seed: number;
+@@ -109,7 +121,17 @@ export interface GameState {
+   lastSaved: number;
+   /** guards against clocks moved backwards: the latest wall-clock time we've seen */
+   maxSeenTime: number;
+-  world: { size: number; deposits: (DepositId | null)[]; plots: boolean[] };
++  world: {
++    size: number;
++    deposits: (DepositId | null)[];
++    /** ore grade per tile: 0 low, 1 normal, 2 high (see GRADE_MULT) */
++    grade: number[];
++    plots: boolean[];
++  };
++  /** temporary rich veins (only active while the game is open) */
++  veins: Vein[];
++  /** seconds until the next rich vein may appear */
++  veinTimer: number;
+   buildings: Building[];
+   belts: Belt[];
+   nextId: number;
+diff --git a/src/core/veins.ts b/src/core/veins.ts
+new file mode 100644
+index 0000000..3cb918e
+--- /dev/null
++++ b/src/core/veins.ts
+@@ -0,0 +1,93 @@
++import { GRADE_MULT, VEINS, type DepositId } from '../config/balance';
++import { hasResearch } from './economy';
++import { metaUnlocked } from './quests';
++import { buildingAt, isUnlocked, rand } from './state';
++import type { GameState, Vein } from './types';
++
++/**
++ * Ore grades (permanent, per tile) and rich veins (temporary bonus deposits).
++ *
++ * Rich veins only run while the game is open: offline catch-up switches them off
++ * (see `veinsEnabled`), so a vein never empties or vanishes while the player is
++ * away, and the extrapolated offline income never includes vein bonuses.
++ */
++
++export const veinsEnabled = { on: true };
++
++export type VeinEvent =
++  | { type: 'vein_spawn'; vein: Vein }
++  | { type: 'vein_low'; vein: Vein }
++  | { type: 'vein_depleted'; vein: Vein }
++  | { type: 'vein_expired'; vein: Vein };
++
++export function gradeAt(s: GameState, x: number, y: number): number {
++  return s.world.grade?.[y * s.world.size + x] ?? 1;
++}
++
++export function veinAt(s: GameState, x: number, y: number): Vein | undefined {
++  return s.veins.find((v) => v.x === x && v.y === y);
++}
++
++/** speed multiplier for a drill standing on x,y */
++export function tileMult(s: GameState, x: number, y: number): number {
++  const g = GRADE_MULT[gradeAt(s, x, y)] ?? 1;
++  return veinsEnabled.on && veinAt(s, x, y) ? g * VEINS.mult : g;
++}
++
++/** a drill on x,y produced one ore: draw it from the vein, if any */
++export function mineFromVein(s: GameState, x: number, y: number, events?: VeinEvent[]) {
++  if (!veinsEnabled.on) return;
++  const v = veinAt(s, x, y);
++  if (!v) return;
++  v.amount -= 1;
++  if (!v.warned && v.amount <= v.total * VEINS.lowFraction) {
++    v.warned = true;
++    events?.push({ type: 'vein_low', vein: v });
++  }
++  if (v.amount <= 0) {
++    s.veins = s.veins.filter((x2) => x2 !== v);
++    events?.push({ type: 'vein_depleted', vein: v });
++  }
++}
++
++function spawnSpot(s: GameState): [number, number, DepositId] | null {
++  const spots: [number, number, DepositId][] = [];
++  for (let y = 0; y < s.world.size; y++)
++    for (let x = 0; x < s.world.size; x++) {
++      const d = s.world.deposits[y * s.world.size + x];
++      if (!d || !isUnlocked(s, x, y) || buildingAt(s, x, y) || veinAt(s, x, y)) continue;
++      if (d === 'uranium_ore' && !hasResearch(s, 'r_nuclear')) continue;
++      spots.push([x, y, d]);
++    }
++  if (!spots.length) return null;
++  // favour ores the player already uses
++  const used = spots.filter(([, , d]) => (s.stats.produced[d] ?? 0) > 0);
++  const pool = used.length && rand(s) < 0.75 ? used : spots;
++  return pool[Math.floor(rand(s) * pool.length)];
++}
++
++export function tickVeins(s: GameState, dt: number, events?: VeinEvent[]) {
++  if (!veinsEnabled.on || !metaUnlocked(s)) return;
++  // unclaimed veins fade away
++  for (const v of [...s.veins]) {
++    const b = buildingAt(s, v.x, v.y);
++    if (b?.type === 'miner') continue;
++    v.ttl -= dt;
++    if (v.ttl <= 0) {
++      s.veins = s.veins.filter((x) => x !== v);
++      events?.push({ type: 'vein_expired', vein: v });
++    }
++  }
++  // countdown to the next vein; it waits at zero while all slots are taken
++  s.veinTimer = Math.max(0, s.veinTimer - dt);
++  if (s.veinTimer > 0 || s.veins.length >= VEINS.maxActive) return;
++  const spot = spawnSpot(s);
++  const [a, b] = VEINS.interval;
++  s.veinTimer = a + (b - a) * rand(s);
++  if (!spot) return;
++  const [x, y, type] = spot;
++  const total = VEINS.amount[type];
++  const v: Vein = { id: s.nextId++, x, y, type, amount: total, total, ttl: VEINS.unclaimedTtl, warned: false };
++  s.veins.push(v);
++  events?.push({ type: 'vein_spawn', vein: v });
++}
+diff --git a/src/game.ts b/src/game.ts
+index dc9a911..1a5e255 100644
+--- a/src/game.ts
++++ b/src/game.ts
+@@ -68,6 +68,10 @@ export interface UiState {
+   questDone: QuestDef | null;
+   panel: Panel;
+   busy: boolean; // waiting on the server
++  /** a plain map tile the player tapped (deposit info / build here) */
++  tile: [number, number] | null;
++  /** ask the renderer to centre the camera on a tile */
++  focus: [number, number] | null;
+ }
+ 
+ /**
+@@ -101,6 +105,8 @@ export class Game {
+     questDone: null,
+     panel: 'none',
+     busy: false,
++    tile: null,
++    focus: null,
+   };
+   events: SimEvent[] = [];
+   structureVersion = 0;
+@@ -217,6 +223,16 @@ export class Game {
+       } else if (e.type === 'contract_done') {
+         this.toast(this.t('ui.contractDone', { item: this.t(`item.${e.contract.item}`), reward: Math.round(e.contract.reward).toLocaleString() }), 'success');
+         this.play('quest');
++      } else if (e.type === 'vein_spawn') {
++        this.toast(this.t('ui.veinFound', { ore: this.t(`item.${e.vein.type}`), n: e.vein.total.toLocaleString() }), 'success');
++        this.play('research');
++      } else if (e.type === 'vein_low') {
++        this.toast(this.t('ui.veinLow', { ore: this.t(`item.${e.vein.type}`) }), 'info');
++      } else if (e.type === 'vein_depleted') {
++        this.toast(this.t('ui.veinDepleted', { ore: this.t(`item.${e.vein.type}`) }), 'info');
++        this.emit();
++      } else if (e.type === 'vein_expired') {
++        this.toast(this.t('ui.veinExpired', { ore: this.t(`item.${e.vein.type}`) }), 'info');
+       } else if (e.type === 'contract_expired') {
+         this.toast(this.t('ui.contractExpired', { item: this.t(`item.${e.contract.item}`) }), 'error');
+       }
+@@ -301,7 +317,7 @@ export class Game {
+     setTimeout(() => {
+       this.ui.toasts = this.ui.toasts.filter((t) => t.id !== id);
+       this.emit();
+-    }, 2800);
++    }, Math.min(7000, Math.max(2800, text.length * 70)));
+   }
+ 
+   private result<T>(r: ActionResult<T>): r is { ok: true; value: T } {
+@@ -340,6 +356,7 @@ export class Game {
+     if (mode.kind !== 'select') {
+       this.ui.selected = null;
+       this.ui.plot = null;
++      this.ui.tile = null;
+     }
+     this.emit();
+   }
+@@ -370,9 +387,41 @@ export class Game {
+   select(id: number | null) {
+     this.ui.selected = id;
+     this.ui.plot = null;
++    this.ui.tile = null;
++    this.emit();
++  }
++
++  /** centre the map on a rich vein (cycles through them) and show its info */
++  focusVein() {
++    const vs = this.state.veins;
++    if (!vs.length) return;
++    this.veinCursor = (this.veinCursor + 1) % vs.length;
++    const v = vs[this.veinCursor];
++    this.ui.panel = 'none';
++    this.ui.focus = [v.x, v.y];
++    const b = buildingAt(this.state, v.x, v.y);
++    if (b) this.select(b.id);
++    else {
++      this.select(null);
++      this.ui.tile = [v.x, v.y];
++    }
+     this.emit();
+   }
+ 
++  private veinCursor = -1;
++
++  buildMinerAtTile() {
++    const tile = this.ui.tile;
++    if (!tile) return;
++    const r = placeBuilding(this.state, 'miner', tile[0], tile[1]);
++    if (this.result(r)) {
++      this.play('place');
++      this.ui.tile = null;
++      this.select(r.value.id);
++      this.structureChanged();
++    }
++  }
++
+   tapTile(x: number, y: number) {
+     const mode = this.ui.mode;
+     const hit = buildingAt(this.state, x, y);
+@@ -434,6 +483,10 @@ export class Game {
+       return;
+     }
+     this.select(hit ? hit.id : null);
++    if (!hit && x >= 0 && y >= 0 && x < this.state.world.size && y < this.state.world.size && this.state.world.deposits[y * this.state.world.size + x]) {
++      this.ui.tile = [x, y];
++      this.emit();
++    }
+   }
+ 
+   hoverTile(tile: [number, number] | null) {
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 5b94fa1..4ae764b 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -434,6 +434,21 @@ export const en = {
+   'ui.moveHint': 'Tap the new spot for the {name}',
+   'err.cantReroute': 'Belts can\'t reach that spot',
+   'err.samePlace': 'It\'s already here',
++
++  'ui.grade': 'Ore grade',
++  'ui.gradeLow': 'Low',
++  'ui.gradeNormal': 'Normal',
++  'ui.gradeHigh': 'High',
++  'ui.gradeHint': 'Richer tiles have more sparkles. Tiles deep inside a deposit are usually the richest.',
++  'ui.buildDrillHere': 'Build a drill here',
++  'ui.richVein': 'Rich vein',
++  'ui.veinLeft': '{pct}% left',
++  'ui.veinRunningLow': 'Running low',
++  'ui.veinFades': 'Fades in {time} unless a drill starts mining it',
++  'ui.veinFound': 'Rich {ore} vein found! {n} ore at ×3 speed. Tap ✦ at the top to see it.',
++  'ui.veinLow': 'Your rich {ore} vein is running low',
++  'ui.veinDepleted': 'The rich {ore} vein is mined out — the tile is a normal deposit again',
++  'ui.veinExpired': 'A rich {ore} vein faded away',
+ };
+ 
+ export type Dict = Record<keyof typeof en, string>;
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index 79be1ec..c82e3ab 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -436,4 +436,19 @@ export const th: Dict = {
+   'ui.moveHint': 'แตะตำแหน่งใหม่ของ{name}',
+   'err.cantReroute': 'สายพานไปถึงตำแหน่งนั้นไม่ได้',
+   'err.samePlace': 'อยู่ตำแหน่งนี้อยู่แล้ว',
++
++  'ui.grade': 'เกรดแร่',
++  'ui.gradeLow': 'ต่ำ',
++  'ui.gradeNormal': 'ปกติ',
++  'ui.gradeHigh': 'สูง',
++  'ui.gradeHint': 'ช่องเกรดสูงมีประกายแร่มากกว่า ช่องที่อยู่กลางกลุ่มแร่มักเกรดสูงที่สุด',
++  'ui.buildDrillHere': 'สร้างเครื่องขุดที่นี่',
++  'ui.richVein': 'สายแร่ร่ำรวย',
++  'ui.veinLeft': 'เหลือ {pct}%',
++  'ui.veinRunningLow': 'ใกล้หมดแล้ว',
++  'ui.veinFades': 'จะหายไปใน {time} ถ้ายังไม่มีเครื่องขุดมาขุด',
++  'ui.veinFound': 'พบสายแร่{ore}ร่ำรวย! {n} หน่วย ขุดเร็ว ×3 แตะ ✦ ด้านบนเพื่อดู',
++  'ui.veinLow': 'สายแร่{ore}ร่ำรวยใกล้หมดแล้ว',
++  'ui.veinDepleted': 'สายแร่{ore}ร่ำรวยหมดแล้ว ช่องนี้กลับเป็นสายแร่ปกติ',
++  'ui.veinExpired': 'สายแร่{ore}ร่ำรวยหายไปแล้ว',
+ };
+diff --git a/src/render/renderer.ts b/src/render/renderer.ts
+index f176c05..75c497b 100644
+--- a/src/render/renderer.ts
++++ b/src/render/renderer.ts
+@@ -1,7 +1,8 @@
+ import { Application, Container, Graphics, Text } from 'pixi.js';
+-import { BALANCE, BUILDINGS, ITEMS, POWER, beltSpeed, storageCapacity, type BuildingType, type ItemId } from '../config/balance';
++import { BALANCE, BUILDINGS, ITEMS, POWER, VEINS, beltSpeed, storageCapacity, type BuildingType, type ItemId } from '../config/balance';
+ import { nextPlotPrice, plotForSale } from '../core/land';
+ import { plotsPerRow } from '../core/state';
++import { gradeAt } from '../core/veins';
+ import { canPlace } from '../core/actions';
+ import { pointAt } from '../core/pathfind';
+ import { getBuilding, hqPosition, idx, isUnlocked } from '../core/state';
+@@ -219,6 +220,14 @@ export class Renderer {
+ 
+   private frame(dt: number) {
+     this.time += dt;
++    const focus = this.game.ui.focus;
++    if (focus) {
++      this.game.ui.focus = null;
++      this.cam.scale = Math.max(this.cam.scale, 0.9);
++      // on phones the info sheet covers the lower half: aim at the upper third instead
++      const shift = this.app.screen.width <= 720 ? (this.app.screen.height * 0.2) / this.cam.scale : 0;
++      this.centerOn((focus[0] + 0.5) * TILE, (focus[1] + 0.5) * TILE + shift);
++    }
+     this.world.position.set(this.cam.x, this.cam.y);
+     this.world.scale.set(this.cam.scale);
+ 
+@@ -264,15 +273,19 @@ export class Renderer {
+         const py = y * TILE;
+         const locked = !isUnlocked(s, x, y);
+         g.roundRect(px + 2, py + 2, TILE - 4, TILE - 4, 6).fill({ color: col.fill, alpha: locked ? 0.45 : 1 });
+-        // deterministic flecks
++        // deterministic flecks: richer ore = more, bigger flecks
++        const grade = gradeAt(s, x, y);
++        const count = [3, 6, 10][grade];
++        const size = [2.4, 3, 3.4][grade];
+         let h = (x * 73856093) ^ (y * 19349663);
+-        for (let i = 0; i < 6; i++) {
++        for (let i = 0; i < count; i++) {
+           h = (h * 1103515245 + 12345) & 0x7fffffff;
+           const fx = px + 7 + (h % 26);
+           h = (h * 1103515245 + 12345) & 0x7fffffff;
+           const fy = py + 7 + (h % 26);
+-          g.poly([fx, fy - 3, fx + 3, fy, fx, fy + 3, fx - 3, fy]).fill({ color: col.fleck, alpha: locked ? 0.3 : 0.9 });
++          g.poly([fx, fy - size, fx + size, fy, fx, fy + size, fx - size, fy]).fill({ color: col.fleck, alpha: locked ? 0.3 : grade === 0 ? 0.6 : 0.9 });
+         }
++        if (grade === 2 && !locked) g.roundRect(px + 3, py + 3, TILE - 6, TILE - 6, 5).stroke({ width: 1.5, color: col.fleck, alpha: 0.55 });
+       }
+     }
+     // plot borders of the owned land
+@@ -450,6 +463,29 @@ export class Renderer {
+       }
+     }
+ 
++    // rich veins: golden pulse, remaining-amount bar, fade timer when unclaimed
++    for (const v of s.veins) {
++      const px = v.x * TILE;
++      const py = v.y * TILE;
++      const glow = 0.45 + 0.4 * Math.sin(this.time * 4 + v.id);
++      const frac = v.amount / v.total;
++      const low = frac <= VEINS.lowFraction;
++      g.roundRect(px - 1, py - 1, TILE + 2, TILE + 2, 8).stroke({ width: 3, color: low ? C.red : C.amber, alpha: glow });
++      for (let k = 0; k < 3; k++) {
++        const a = this.time * 1.4 + (k * Math.PI * 2) / 3 + v.id;
++        const sx = px + TILE / 2 + Math.cos(a) * 15;
++        const sy = py + TILE / 2 + Math.sin(a) * 15;
++        g.star(sx, sy, 4, 3.2, 1.2, a).fill({ color: 0xfff1b8, alpha: 0.85 });
++      }
++      g.rect(px + 4, py + TILE + 2, TILE - 8, 4).fill({ color: 0x000000, alpha: 0.6 });
++      g.rect(px + 4, py + TILE + 2, (TILE - 8) * frac, 4).fill(low ? C.red : C.amber);
++      const claimed = s.buildings.some((b) => b.type === 'miner' && b.x === v.x && b.y === v.y);
++      if (!claimed) {
++        const t = Math.max(0, v.ttl / VEINS.unclaimedTtl);
++        g.moveTo(px + TILE / 2, py - 8).arc(px + TILE / 2, py - 8, 5, -Math.PI / 2, -Math.PI / 2 + Math.PI * 2 * t).stroke({ width: 2, color: 0xfff1b8, alpha: 0.9 });
++      }
++    }
++
+     // machine animations + status lights
+     for (const b of s.buildings) {
+       const def = BUILDINGS[b.type];
+diff --git a/src/ui/App.tsx b/src/ui/App.tsx
+index 97a1205..ce12264 100644
+--- a/src/ui/App.tsx
++++ b/src/ui/App.tsx
+@@ -9,6 +9,7 @@ import { Inspector } from './Inspector';
+ import { OfflineModal, SettingsPanel, StatsPanel, UpgradesPanel } from './Panels';
+ import { ContractsPanel, DailyPanel, FleetPanel, MarketsPanel, MenuSheet, PlotSheet, PrestigePanel, ResearchPanel } from './MetaPanels';
+ import { ShopPanel } from './ShopPanel';
++import { TileSheet } from './TileSheet';
+ import { AccountPanel, ConflictModal, PaymentModal } from './OnlinePanels';
+ 
+ export function App() {
+@@ -62,6 +63,7 @@ export function App() {
+         <Toasts />
+         <Inspector />
+         <PlotSheet />
++        <TileSheet />
+         <BottomBar />
+         <BuildDrawer />
+         <UpgradesPanel />
+diff --git a/src/ui/Hud.tsx b/src/ui/Hud.tsx
+index a2ceec6..3fffb45 100644
+--- a/src/ui/Hud.tsx
++++ b/src/ui/Hud.tsx
+@@ -51,6 +51,11 @@ export function TopBar() {
+             <NavIcon panel="research" size={14} /> {fmtClock(s.research.active.remaining)}
+           </button>
+         )}
++        {s.veins.length > 0 && (
++          <button className="chip vein" onClick={() => game.focusVein()} title={t('ui.richVein')}>
++            ✦ {s.veins.length}
++          </button>
++        )}
+         {boostActive(s, now) && <span className="chip boost mono">×2 · {fmtClock((s.boostUntil - now) / 1000)}</span>}
+       </div>
+       <nav className="top-actions desktop-nav">
+@@ -191,7 +196,7 @@ export function BottomBar() {
+     );
+   }
+ 
+-  if (game.ui.selected !== null || game.ui.plot) return null; // the inspector takes the bottom on mobile
++  if (game.ui.selected !== null || game.ui.plot || game.ui.tile) return null; // the inspector takes the bottom on mobile
+ 
+   return (
+     <div className="bottombar">
+diff --git a/src/ui/Inspector.tsx b/src/ui/Inspector.tsx
+index fd2f1cf..02284c0 100644
+--- a/src/ui/Inspector.tsx
++++ b/src/ui/Inspector.tsx
+@@ -12,6 +12,8 @@ import {
+   type ItemId,
+ } from '../config/balance';
+ import { globalSpeed, powerMult, recipeUnlocked } from '../core/economy';
++import { tileMult } from '../core/veins';
++import { OreInfo } from './TileSheet';
+ import { isUpgradable, linkCarriesIn, totalInvested } from '../core/actions';
+ import { getBuilding, invTotal } from '../core/state';
+ import { fmtMoney, fmtNum } from '../i18n';
+@@ -44,12 +46,19 @@ export function Inspector() {
+       <div className="kv">
+         <span>{t('ui.extracts')}</span>
+         <span>
+-          {dep && <ItemIcon item={dep} />} {dep ? t(`item.${dep}`) : '-'} · <span className="mono">{fmtNum((60 / BALANCE.minerTime) * sm)}/min</span>
++          {dep && <ItemIcon item={dep} />} {dep ? t(`item.${dep}`) : '-'} ·{' '}
++          <span className="mono">{fmtNum((60 / BALANCE.minerTime) * sm * tileMult(s, b.x, b.y))}/min</span>
+         </span>
+         <span>{t('ui.output')}</span>
+         <Inv inv={b.output} empty={t('ui.empty')} />
+       </div>
+     );
++    body = (
++      <>
++        {body}
++        <OreInfo x={b.x} y={b.y} />
++      </>
++    );
+   } else if (b.type === 'furnace' || b.type === 'assembler' || b.type === 'fabricator') {
+     const r = b.recipe ? RECIPES[b.recipe] : null;
+     body = (
+diff --git a/src/ui/TileSheet.tsx b/src/ui/TileSheet.tsx
+new file mode 100644
+index 0000000..1a3687c
+--- /dev/null
++++ b/src/ui/TileSheet.tsx
+@@ -0,0 +1,83 @@
++import { BUILDINGS, GRADE_MULT, VEINS, type ItemId } from '../config/balance';
++import { veinAt, gradeAt } from '../core/veins';
++import { fmtClock, fmtMoney } from '../i18n';
++import { useGame, useT } from './hooks';
++import { ItemIcon } from './icons';
++
++export const GRADE_KEYS = ['ui.gradeLow', 'ui.gradeNormal', 'ui.gradeHigh'];
++
++/** grade + rich-vein lines, shared by the tile sheet and the drill inspector */
++export function OreInfo({ x, y }: { x: number; y: number }) {
++  const game = useGame();
++  const t = useT();
++  const s = game.state;
++  const g = gradeAt(s, x, y);
++  const v = veinAt(s, x, y);
++  const frac = v ? v.amount / v.total : 0;
++  const low = frac <= VEINS.lowFraction;
++  return (
++    <>
++      <div className="kv">
++        <span>{t('ui.grade')}</span>
++        <span className={`grade g${g}`}>
++          {t(GRADE_KEYS[g])} <span className="mono">×{GRADE_MULT[g]}</span>
++        </span>
++      </div>
++      {v && (
++        <div className={`vein-box ${low ? 'low' : ''}`}>
++          <div className="row-between">
++            <strong>✦ {t('ui.richVein')}</strong>
++            <span className="mono">×{VEINS.mult}</span>
++          </div>
++          <span className="meter">
++            <span className="fill" style={{ width: `${frac * 100}%` }} />
++          </span>
++          <div className="row-between small">
++            <span className="mono">
++              {Math.max(0, Math.floor(v.amount)).toLocaleString()} / {v.total.toLocaleString()}
++            </span>
++            <span className={low ? 'bad' : 'dim'}>{low ? t('ui.veinRunningLow') : t('ui.veinLeft', { pct: Math.round(frac * 100) })}</span>
++          </div>
++          {!s.buildings.some((b) => b.type === 'miner' && b.x === x && b.y === y) && (
++            <p className="small warn">{t('ui.veinFades', { time: fmtClock(v.ttl) })}</p>
++          )}
++        </div>
++      )}
++    </>
++  );
++}
++
++export function TileSheet() {
++  const game = useGame();
++  const t = useT();
++  const tile = game.ui.tile;
++  if (!tile || game.ui.mode.kind !== 'select') return null;
++  const s = game.state;
++  const [x, y] = tile;
++  const dep = s.world.deposits[y * s.world.size + x] as ItemId | null;
++  if (!dep) return null;
++  const cost = BUILDINGS.miner.cost;
++  return (
++    <aside className="sheet inspector" role="dialog">
++      <div className="sheet-head">
++        <ItemIcon item={dep} size={32} />
++        <div className="insp-title">
++          <h2>{t(`item.${dep}`)}</h2>
++          {veinAt(s, x, y) && <span className="status warn">✦ {t('ui.richVein')}</span>}
++        </div>
++        <button className="icon-btn" onClick={() => game.select(null)} aria-label={t('ui.close')}>
++          ✕
++        </button>
++      </div>
++      <div className="sheet-body">
++        <OreInfo x={x} y={y} />
++        <p className="small dim">{t('ui.gradeHint')}</p>
++      </div>
++      <div className="sheet-actions">
++        <button className="btn primary" disabled={s.money < cost} onClick={() => game.buildMinerAtTile()}>
++          {t('ui.buildDrillHere')} <span className="mono">{fmtMoney(cost)}</span>
++        </button>
++      </div>
++    </aside>
++  );
++}
+diff --git a/src/ui/styles.css b/src/ui/styles.css
+index 2664682..bb5b65d 100644
+--- a/src/ui/styles.css
++++ b/src/ui/styles.css
+@@ -1430,3 +1430,46 @@ select:focus-visible {
+     transition-duration: 0.001ms !important;
+   }
+ }
++
++/* ============================================================ ore grades & rich veins */
++
++.grade {
++  font-weight: 600;
++}
++.grade.g0 {
++  color: var(--dim);
++}
++.grade.g2 {
++  color: var(--amber);
++}
++.vein-box {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++  margin-top: 10px;
++  padding: 10px;
++  border-radius: 10px;
++  border: 1px solid rgba(255, 201, 74, 0.55);
++  background: rgba(255, 201, 74, 0.08);
++}
++.vein-box strong {
++  color: var(--amber);
++}
++.vein-box .meter .fill {
++  background: var(--amber);
++}
++.vein-box.low {
++  border-color: rgba(255, 90, 90, 0.6);
++  background: rgba(255, 90, 90, 0.08);
++}
++.vein-box.low .meter .fill {
++  background: var(--red);
++}
++.vein-box p {
++  margin: 0;
++}
++.chip.vein {
++  border-color: var(--amber);
++  color: var(--amber);
++  animation: blink 1.6s ease-in-out infinite;
++}
+diff --git a/tests/phase2.test.ts b/tests/phase2.test.ts
+index 490fab0..e166469 100644
+--- a/tests/phase2.test.ts
++++ b/tests/phase2.test.ts
+@@ -204,7 +204,9 @@ describe('migration', () => {
+     old.version = 1;
+     for (const k of ['research', 'markets', 'vehicles', 'prestige', 'contracts', 'daily', 'gems']) delete old[k];
+     const s = deserialize(JSON.stringify(old))!;
+-    expect(s.version).toBe(2);
++    expect(s.version).toBe(3);
++    expect(s.world.grade.length).toBe(s.world.size * s.world.size);
++    expect(s.veins).toEqual([]);
+     expect(s.research.done).toEqual([]);
+     run(s, 5);
+     expect(s.world.deposits.includes('sand')).toBe(true);
+diff --git a/tests/veins.test.ts b/tests/veins.test.ts
+new file mode 100644
+index 0000000..f16179c
+--- /dev/null
++++ b/tests/veins.test.ts
+@@ -0,0 +1,158 @@
++import { describe, expect, it } from 'vitest';
++import { BALANCE, GRADE_MULT, VEINS, type DepositId } from '../src/config/balance';
++import { createLink, moveBuilding, placeBuilding } from '../src/core/actions';
++import { applyOffline } from '../src/core/offline';
++import { skipTutorial } from '../src/core/quests';
++import { tick, type SimEvent } from '../src/core/sim';
++import { idx, newGame } from '../src/core/state';
++import type { GameState } from '../src/core/types';
++import { gradeAt, tileMult, veinAt } from '../src/core/veins';
++
++const run = (s: GameState, seconds: number, events?: SimEvent[]) => {
++  for (let t = 0; t < seconds; t += BALANCE.tickSeconds) tick(s, BALANCE.tickSeconds, events);
++};
++const hqId = (s: GameState) => s.buildings.find((b) => b.type === 'hq')!.id;
++
++function tiles(s: GameState, type: DepositId, grade?: number): [number, number][] {
++  const out: [number, number][] = [];
++  for (let y = 8; y < 24; y++)
++    for (let x = 8; x < 24; x++) if (s.world.deposits[idx(s, x, y)] === type && (grade === undefined || gradeAt(s, x, y) === grade)) out.push([x, y]);
++  return out;
++}
++
++describe('ore grades', () => {
++  it('every deposit has a grade; empty ground has none; starts have a mix', () => {
++    let highs = 0;
++    let lows = 0;
++    for (let seed = 1; seed < 30; seed++) {
++      const s = newGame(seed);
++      for (let i = 0; i < s.world.deposits.length; i++) {
++        if (!s.world.deposits[i]) expect(s.world.grade[i]).toBe(0);
++        else expect([0, 1, 2]).toContain(s.world.grade[i]);
++      }
++      highs += tiles(s, 'iron_ore', 2).length;
++      lows += tiles(s, 'iron_ore', 0).length;
++      expect(tiles(s, 'iron_ore', 1).length + tiles(s, 'iron_ore', 2).length).toBeGreaterThan(0); // a usable start
++    }
++    expect(highs).toBeGreaterThan(10);
++    expect(lows).toBeGreaterThan(10);
++  });
++
++  it('a high-grade drill out-produces a low-grade one by 2.5×', () => {
++    for (let seed = 1; seed < 50; seed++) {
++      const s = newGame(seed);
++      const hi = tiles(s, 'iron_ore', 2)[0];
++      const lo = tiles(s, 'iron_ore', 0)[0];
++      if (!hi || !lo) continue;
++      s.money = 1000;
++      for (const p of [hi, lo]) {
++        const m = placeBuilding(s, 'miner', p[0], p[1]);
++        if (!m.ok) throw new Error(m.reason);
++      }
++      run(s, 15);
++      const [mh, ml] = s.buildings.filter((b) => b.type === 'miner');
++      const total = (b: typeof mh) => (b.output.iron_ore ?? 0) + b.progress;
++      expect(total(mh) / total(ml)).toBeCloseTo(GRADE_MULT[2] / GRADE_MULT[0], 0);
++      return;
++    }
++    throw new Error('no seed with both grades');
++  });
++});
++
++describe('rich veins', () => {
++  function ready(seed = 3) {
++    const s = newGame(seed);
++    skipTutorial(s);
++    s.stats.produced.iron_ore = 1;
++    return s;
++  }
++
++  it('do not appear during the tutorial, then appear after the first delay', () => {
++    const s = newGame(3);
++    run(s, VEINS.firstAfter + 5);
++    expect(s.veins.length).toBe(0);
++    const t = ready();
++    const ev: SimEvent[] = [];
++    run(t, VEINS.firstAfter + 1, ev);
++    expect(t.veins.length).toBe(1);
++    expect(ev.some((e) => e.type === 'vein_spawn')).toBe(true);
++    const v = t.veins[0];
++    expect(t.world.deposits[idx(t, v.x, v.y)]).toBe(v.type);
++  });
++
++  it('a drill on a vein mines ×3, draws it down, warns when low and stops the bonus when empty', () => {
++    const s = ready();
++    run(s, VEINS.firstAfter + 1);
++    const v = s.veins[0];
++    v.amount = v.total = 40; // short vein for the test
++    s.money = 1e5;
++    const m = placeBuilding(s, 'miner', v.x, v.y);
++    if (!m.ok) throw new Error(m.reason);
++    createLink(s, m.value.id, hqId(s));
++    expect(tileMult(s, v.x, v.y)).toBeCloseTo(GRADE_MULT[gradeAt(s, v.x, v.y)] * VEINS.mult, 5);
++    const ev: SimEvent[] = [];
++    run(s, 60, ev);
++    expect(ev.some((e) => e.type === 'vein_low')).toBe(true);
++    expect(ev.some((e) => e.type === 'vein_depleted')).toBe(true);
++    expect(veinAt(s, v.x, v.y)).toBeUndefined();
++    expect(tileMult(s, v.x, v.y)).toBe(GRADE_MULT[gradeAt(s, v.x, v.y)]); // back to a normal tile
++    expect(s.world.deposits[idx(s, v.x, v.y)]).toBe(v.type); // the ore itself stays
++  });
++
++  it('an unclaimed vein fades away; a claimed one does not', () => {
++    const s = ready();
++    run(s, VEINS.firstAfter + 1);
++    const ev: SimEvent[] = [];
++    run(s, VEINS.unclaimedTtl + 1, ev);
++    expect(ev.some((e) => e.type === 'vein_expired')).toBe(true);
++
++    const t = ready(5);
++    run(t, VEINS.firstAfter + 1);
++    const v = t.veins[0];
++    t.money = 1e5;
++    placeBuilding(t, 'miner', v.x, v.y);
++    run(t, VEINS.unclaimedTtl + 10);
++    expect(t.veins.some((x) => x.id === v.id)).toBe(true); // still there (output full, not mined out)
++  });
++
++  it('never more than two at once', () => {
++    const s = ready();
++    run(s, VEINS.firstAfter + VEINS.interval[1] * 2);
++    expect(s.veins.length).toBeLessThanOrEqual(VEINS.maxActive);
++  });
++
++  it('pause while offline: no drain, no expiry, no bonus in offline income', () => {
++    const s = ready();
++    run(s, VEINS.firstAfter + 1);
++    const v = s.veins[0];
++    s.money = 1e5;
++    const m = placeBuilding(s, 'miner', v.x, v.y);
++    if (!m.ok) throw new Error();
++    createLink(s, m.value.id, hqId(s));
++    run(s, 20);
++    const amount = v.amount;
++    const ttl = v.ttl;
++    const money = s.money;
++    const rep = applyOffline(s, 4 * 3600)!;
++    expect(v.amount).toBe(amount);
++    expect(v.ttl).toBe(ttl);
++    expect(s.veins).toContain(v);
++    // income at the tile's normal grade (~0.5 ore/s × grade × 4 h), not ×3
++    const normal = 0.5 * GRADE_MULT[gradeAt(s, v.x, v.y)] * 4 * 3600;
++    expect(rep.earned).toBeLessThan(normal * 1.4);
++    expect(s.money - money).toBeCloseTo(rep.earned, 5);
++  });
++
++  it('moving a drill onto a vein works and gets the bonus', () => {
++    const s = ready();
++    run(s, VEINS.firstAfter + 1);
++    const v = s.veins[0];
++    s.money = 1e5;
++    const other = tiles(s, v.type).find(([x, y]) => !veinAt(s, x, y))!;
++    const m = placeBuilding(s, 'miner', other[0], other[1]);
++    if (!m.ok) throw new Error();
++    expect(moveBuilding(s, m.value.id, v.x, v.y).ok).toBe(true);
++    run(s, 5);
++    expect(v.amount).toBeLessThan(v.total);
++  });
++});
