@@ -457,4 +457,7 @@ export const th: Dict = {
   'ui.effectMove': 'ค่าย้ายลดลง {pct}%',
   'r.r_logistics.t': 'โลจิสติกส์ภายในโรงงาน',
   'r.r_logistics.d': 'ย้ายเครื่องจักรภายในโรงงานได้ถูกลง',
+
+  'ui.changeRecipe': 'เปลี่ยนสูตร ({n}) ▾',
+  'ui.hideRecipes': 'ซ่อนสูตร ▴',
 };

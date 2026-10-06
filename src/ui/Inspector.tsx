@@ -25,8 +25,12 @@ export function Inspector() {
   const t = useT();
   const b = game.selectedBuilding();
   const [confirm, setConfirm] = useState(false);
+  const [showRecipes, setShowRecipes] = useState(false);
   const linkHi = useHighlight('link-btn');
-  useEffect(() => setConfirm(false), [b?.id]);
+  useEffect(() => {
+    setConfirm(false);
+    setShowRecipes(false);
+  }, [b?.id]);
   if (!b || game.ui.mode.kind !== 'select') return null;
 
   const s = game.state;
@@ -67,38 +71,81 @@ export function Inspector() {
       <>
         <div className="section-label">{t('ui.recipe')}</div>
         <div className="recipes">
-          {allRecipesFor(b.type).map((rid) => {
+          {allRecipesFor(b.type)
+            .filter((rid) => showRecipes || !b.recipe || rid === b.recipe)
+            .map((rid) => {
             const rr = RECIPES[rid];
             const open = recipeUnlocked(s, rid);
+            const out = Object.keys(rr.outputs)[0] as ItemId;
             return (
               <button
                 key={rid}
                 className={`recipe ${b.recipe === rid ? 'active' : ''} ${open ? '' : 'locked'}`}
                 disabled={!open}
                 title={open ? '' : t('ui.researchLocked', { name: t(`r.${rr.research}.t`) })}
-                onClick={() => game.setRecipe(b.id, rid)}
+                onClick={() => {
+                  if (rid === b.recipe) setShowRecipes(!showRecipes);
+                  else {
+                    game.setRecipe(b.id, rid);
+                    setShowRecipes(false);
+                  }
+                }}
               >
-                {(Object.keys(rr.inputs) as ItemId[]).map((i) => (
-                  <span key={i} className="inv-item">
-                    <ItemIcon item={i} />
-                    {rr.inputs[i]}
+                <span className="recipe-out">
+                  <ItemIcon item={out} size={20} />
+                  <strong>{t(`item.${out}`)}</strong>
+                  {(rr.outputs[out] ?? 1) > 1 && <span className="mono dim">×{rr.outputs[out]}</span>}
+                  <span className="recipe-time mono dim">{fmtNum(rr.time)}s</span>
+                </span>
+                {open ? (
+                  <span className="recipe-in">
+                    {(Object.keys(rr.inputs) as ItemId[]).map((i) => (
+                      <span key={i} className="ing">
+                        <ItemIcon item={i} size={16} />
+                        {t(`item.${i}`)} <span className="mono">×{rr.inputs[i]}</span>
+                      </span>
+                    ))}
                   </span>
-                ))}
-                <span className="arrow">→</span>
-                {(Object.keys(rr.outputs) as ItemId[]).map((i) => (
-                  <span key={i} className="inv-item">
-                    <ItemIcon item={i} />
-                    {rr.outputs[i]}
-                  </span>
-                ))}
-                <span className="recipe-name">{open ? t(`item.${Object.keys(rr.outputs)[0]}`) : `🔒 ${t(`r.${rr.research}.t`)}`}</span>
+                ) : (
+                  <span className="recipe-in warn">🔒 {t(`r.${rr.research}.t`)}</span>
+                )}
               </button>
             );
           })}
+          {allRecipesFor(b.type).length > 1 && (
+            <button className="link-btn recipe-toggle" onClick={() => setShowRecipes(!showRecipes)}>
+              {showRecipes ? t('ui.hideRecipes') : t('ui.changeRecipe', { n: allRecipesFor(b.type).length })}
+            </button>
+          )}
         </div>
+        {r && (
+          <>
+            <div className="section-label">{t('ui.input')}</div>
+            <div className="needs">
+              {(Object.keys(r.inputs) as ItemId[]).map((i) => {
+                const have = Math.floor(b.input[i] ?? 0);
+                const need = r.inputs[i] ?? 0;
+                const short = have < need && !b.crafting;
+                return (
+                  <span key={i} className={`need ${short ? 'short' : ''}`}>
+                    <ItemIcon item={i} size={18} />
+                    <span className="need-name">{t(`item.${i}`)}</span>
+                    <span className="mono">
+                      {have}/{need}
+                    </span>
+                  </span>
+                );
+              })}
+            </div>
+          </>
+        )}
         <div className="kv">
-          <span>{t('ui.input')}</span>
-          <Inv inv={b.input} empty={t('ui.empty')} />
+          {!r && (
+            <>
+              <span>{t('ui.input')}</span>
+              <Inv inv={b.input} empty={t('ui.empty')} />
+            </>
+          )}
           <span>{t('ui.output')}</span>
           <Inv inv={b.output} empty={t('ui.empty')} />
           {r && (

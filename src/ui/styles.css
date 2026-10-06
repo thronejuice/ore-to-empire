@@ -1473,3 +1473,67 @@ select:focus-visible {
   color: var(--amber);
   animation: blink 1.6s ease-in-out infinite;
 }
+
+/* recipe rows: output on top, named ingredients below */
+.recipe {
+  flex-direction: column;
+  align-items: stretch;
+  gap: 5px;
+}
+.recipe-out {
+  display: flex;
+  align-items: center;
+  gap: 7px;
+}
+.recipe-out strong {
+  font-size: 14px;
+}
+.recipe-time {
+  margin-left: auto;
+  font-size: 12px;
+}
+.recipe-in {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 4px 12px;
+  font-size: 12.5px;
+  color: #c3ccd8;
+  padding-left: 27px;
+}
+.recipe.locked .recipe-in {
+  padding-left: 27px;
+}
+.ing {
+  display: inline-flex;
+  align-items: center;
+  gap: 4px;
+  white-space: nowrap;
+}
+.needs {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+}
+.need {
+  display: inline-flex;
+  align-items: center;
+  gap: 6px;
+  padding: 4px 9px;
+  border-radius: 8px;
+  background: var(--panel-2);
+  border: 1px solid var(--edge);
+  font-size: 13px;
+}
+.need.short {
+  border-color: rgba(255, 90, 90, 0.55);
+}
+.need.short .mono {
+  color: var(--red);
+}
+.recipe-toggle {
+  align-self: flex-start;
+  padding: 2px 0 0;
+  font-size: 13px;
+  color: var(--blue);
+  text-decoration: none;
+}

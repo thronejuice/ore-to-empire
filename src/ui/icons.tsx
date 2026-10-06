@@ -2,7 +2,7 @@ import { BUILDINGS, ITEMS, type BuildingType, type ItemId } from '../config/bala
 
 const hex = (n: number) => '#' + n.toString(16).padStart(6, '0');
 
-export function ItemIcon({ item, size = 16 }: { item: ItemId; size?: number }) {
+export function ItemIcon({ item, size = 16, label }: { item: ItemId; size?: number; label?: string }) {
   const c = hex(ITEMS[item].color);
   const k = 'rgba(0,0,0,.45)';
   const dark = '#141920';
@@ -10,20 +10,40 @@ export function ItemIcon({ item, size = 16 }: { item: ItemId; size?: number }) {
   switch (item) {
     case 'iron_bar':
     case 'copper_bar':
-    case 'glass':
+      // ingot: trapezoid with a top highlight
+      shape = (
+        <g>
+          <polygon points="1.5,12 3.5,5 12.5,5 14.5,12" fill={c} stroke={k} />
+          <line x1="4.5" y1="6.6" x2="11.5" y2="6.6" stroke="#fff" strokeOpacity=".45" />
+        </g>
+      );
+      break;
     case 'steel':
-      shape = <rect x="2" y="5" width="12" height="6" rx="1.5" fill={c} stroke={k} />;
+      // stacked plates
+      shape = (
+        <g>
+          <rect x="1.5" y="3" width="13" height="4" rx="1" fill={c} stroke={k} />
+          <rect x="1.5" y="9" width="13" height="4" rx="1" fill={c} stroke={k} />
+          <line x1="3" y1="4.5" x2="13" y2="4.5" stroke="#fff" strokeOpacity=".35" />
+          <line x1="3" y1="10.5" x2="13" y2="10.5" stroke="#fff" strokeOpacity=".35" />
+        </g>
+      );
+      break;
+    case 'glass':
+      // translucent pane with a shine
+      shape = (
+        <g>
+          <rect x="2.5" y="2.5" width="11" height="11" rx="1" fill={c} fillOpacity=".45" stroke={c} strokeWidth="1.3" />
+          <line x1="5" y1="11" x2="11" y2="5" stroke="#fff" strokeWidth="1.4" strokeOpacity=".85" />
+        </g>
+      );
       break;
     case 'machine_part':
       shape = <polygon points="8,1.5 10,5.5 14.5,5.5 11,8.5 12.5,13.5 8,10.5 3.5,13.5 5,8.5 1.5,5.5 6,5.5" fill={c} stroke={k} />;
       break;
     case 'wire':
-      shape = (
-        <g>
-          <circle cx="8" cy="8" r="5" fill="none" stroke={c} strokeWidth="2.5" />
-          <circle cx="8" cy="8" r="2" fill={c} />
-        </g>
-      );
+      // coiled wire
+      shape = <path d="M1.5 11c1.5-7 3.5-7 3.5 0s2.5 7 3.5 0 2.5-7 3.5 0 1.5 4 2.5 1" fill="none" stroke={c} strokeWidth="2" strokeLinecap="round" />;
       break;
     case 'gear':
       shape = (
@@ -40,10 +60,13 @@ export function ItemIcon({ item, size = 16 }: { item: ItemId; size?: number }) {
       shape = <rect x="5" y="1" width="6" height="14" rx="3" fill={c} stroke={k} />;
       break;
     case 'motor':
+      // body with cooling fins and a shaft
       shape = (
         <g>
-          <circle cx="8" cy="8" r="6.5" fill={c} stroke={k} />
-          <circle cx="8" cy="8" r="2.8" fill={dark} />
+          <rect x="1.5" y="3.5" width="10" height="9" rx="2" fill={c} stroke={k} />
+          <line x1="4.5" y1="4" x2="4.5" y2="12" stroke={dark} strokeOpacity=".6" />
+          <line x1="7.5" y1="4" x2="7.5" y2="12" stroke={dark} strokeOpacity=".6" />
+          <rect x="11.5" y="7" width="3.5" height="2" fill="#b0bccb" />
         </g>
       );
       break;
@@ -90,7 +113,8 @@ export function ItemIcon({ item, size = 16 }: { item: ItemId; size?: number }) {
       shape = <polygon points="2,7 6,2 13,4 14,10 9,14 3,12" fill={c} stroke={k} />;
   }
   return (
-    <svg className="icon" width={size} height={size} viewBox="0 0 16 16" aria-hidden>
+    <svg className="icon" width={size} height={size} viewBox="0 0 16 16" aria-hidden={label ? undefined : true} role={label ? 'img' : undefined}>
+      {label && <title>{label}</title>}
       {shape}
     </svg>
   );

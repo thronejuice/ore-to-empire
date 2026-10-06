@@ -566,9 +566,14 @@ export class Renderer {
     switch (item) {
       case 'iron_bar':
       case 'copper_bar':
-      case 'glass':
+        g.poly([x - r, y + r * 0.55, x - r * 0.7, y - r * 0.55, x + r * 0.7, y - r * 0.55, x + r, y + r * 0.55]).fill(col).stroke(edge);
+        break;
       case 'steel':
-        g.roundRect(x - r, y - r * 0.55, r * 2, r * 1.1, 2).fill(col).stroke(edge);
+        g.roundRect(x - r, y - r * 0.8, r * 2, r * 0.65, 1).roundRect(x - r, y + r * 0.15, r * 2, r * 0.65, 1).fill(col).stroke(edge);
+        break;
+      case 'glass':
+        g.rect(x - r * 0.8, y - r * 0.8, r * 1.6, r * 1.6).fill({ color: col, alpha: 0.5 }).stroke({ width: 1.2, color: col });
+        g.moveTo(x - r * 0.4, y + r * 0.4).lineTo(x + r * 0.4, y - r * 0.4).stroke({ width: 1.3, color: 0xffffff, alpha: 0.85 });
         break;
       case 'machine_part':
         g.star(x, y, 6, r, r * 0.7).fill(col).stroke(edge);
@@ -584,8 +589,8 @@ export class Renderer {
         g.roundRect(x - r * 0.45, y - r, r * 0.9, r * 2, r * 0.45).fill(col).stroke(edge);
         break;
       case 'motor':
-        g.circle(x, y, r).fill(col).stroke(edge);
-        g.circle(x, y, r * 0.45).fill(0x1a1f27);
+        g.roundRect(x - r, y - r * 0.75, r * 1.5, r * 1.5, 2).fill(col).stroke(edge);
+        g.rect(x + r * 0.5, y - r * 0.15, r * 0.5, r * 0.3).fill(0xb0bccb);
         break;
       case 'circuit':
         g.rect(x - r * 0.9, y - r * 0.9, r * 1.8, r * 1.8).fill(col).stroke(edge);
@@ -610,8 +615,11 @@ export class Renderer {
         g.circle(x - r * 0.7, y + r * 0.55, r * 0.3).circle(x + r * 0.7, y + r * 0.55, r * 0.3).fill(0x10141a);
         break;
       case 'wire':
-        g.circle(x, y, r * 0.85).stroke({ width: 2.5, color: col });
-        g.circle(x, y, r * 0.35).fill(col);
+        g.moveTo(x - r, y + r * 0.4)
+          .bezierCurveTo(x - r * 0.7, y - r, x - r * 0.3, y - r, x - r * 0.25, y + r * 0.4)
+          .bezierCurveTo(x - r * 0.1, y + r, x + r * 0.35, y + r, x + r * 0.4, y - r * 0.2)
+          .bezierCurveTo(x + r * 0.5, y - r, x + r, y - r * 0.6, x + r, y + r * 0.3)
+          .stroke({ width: 2.2, color: col, cap: 'round' });
         break;
       default:
         g.poly([x - r, y - r * 0.2, x - r * 0.3, y - r, x + r * 0.8, y - r * 0.6, x + r, y + r * 0.4, x + r * 0.1, y + r, x - r * 0.8, y + r * 0.6])

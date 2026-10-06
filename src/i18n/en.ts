@@ -455,6 +455,9 @@ export const en = {
   'ui.effectMove': '−{pct}% moving fees',
   'r.r_logistics.t': 'Plant Logistics',
   'r.r_logistics.d': 'Cheaper to move machines around the factory.',
+
+  'ui.changeRecipe': 'Change recipe ({n}) ▾',
+  'ui.hideRecipes': 'Hide recipes ▴',
 };
 
 export type Dict = Record<keyof typeof en, string>;
