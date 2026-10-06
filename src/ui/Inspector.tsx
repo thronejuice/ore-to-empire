@@ -31,7 +31,7 @@ export function Inspector() {
     setConfirm(false);
     setShowRecipes(false);
   }, [b?.id]);
-  if (!b || game.ui.mode.kind !== 'select') return null;
+  if (!b || game.ui.mode.kind !== 'select' || game.ui.tidy) return null;
 
   const s = game.state;
   const def = BUILDINGS[b.type];
@@ -265,6 +265,9 @@ export function Inspector() {
               {outs.map((x) => beltRow(x.id, x.to, 'out'))}
               {ins.map((x) => beltRow(x.id, x.from, 'in'))}
             </ul>
+            <button className="link-btn recipe-toggle" disabled={game.ui.busy} onClick={() => game.previewTidy(b.id)}>
+              ⇄ {t('ui.tidyThis')}
+            </button>
           </>
         )}
       </div>

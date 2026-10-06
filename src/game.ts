@@ -25,7 +25,8 @@ import { cancelResearch, startResearch } from './core/research';
 import { localSave, type SaveStore } from './core/save';
 import { tick, type SimEvent } from './core/sim';
 import { buildingAt, getBuilding, isUnlocked, newGame } from './core/state';
-import type { GameState } from './core/types';
+import type { BeltView, GameState } from './core/types';
+import { applyTidy, planTidy, type TidyPlan } from './core/tidy';
 import { translate, type Lang } from './i18n';
 import { sfx, setSoundEnabled, type Sfx } from './audio';
 
@@ -72,6 +73,8 @@ export interface UiState {
   tile: [number, number] | null;
   /** ask the renderer to centre the camera on a tile */
   focus: [number, number] | null;
+  /** a proposed belt layout waiting for the player to accept */
+  tidy: TidyPlan | null;
 }
 
 /**
@@ -107,6 +110,7 @@ export class Game {
     busy: false,
     tile: null,
     focus: null,
+    tidy: null,
   };
   events: SimEvent[] = [];
   structureVersion = 0;
@@ -351,6 +355,7 @@ export class Game {
   // ---------------------------------------------------------------- modes
 
   setMode(mode: Mode) {
+    if (mode.kind !== 'select') this.ui.tidy = null;
     this.ui.mode = mode;
     this.ui.linkPreview = null;
     if (mode.kind !== 'select') {
@@ -531,6 +536,59 @@ export class Game {
       this.play('upgrade');
       this.structureChanged();
     }
+  }
+
+  // ---------------------------------------------------------------- belts: tidy & view
+
+  /** plan a tidier layout (all belts, or one building's) and show it for approval */
+  previewTidy(buildingId?: number) {
+    if (this.ui.busy) return;
+    this.ui.busy = true;
+    this.ui.panel = 'none';
+    this.emit();
+    // let the UI paint "working…" before the (up to ~0.5 s) search
+    setTimeout(() => {
+      const ids = buildingId !== undefined ? this.state.belts.filter((b) => b.from === buildingId || b.to === buildingId).map((b) => b.id) : undefined;
+      const plan = this.state.belts.length ? planTidy(this.state, ids) : null;
+      this.ui.busy = false;
+      if (!plan) {
+        this.toast(this.t('ui.tidyNothing'), 'info');
+        this.emit();
+        return;
+      }
+      this.ui.tidy = plan;
+      this.ui.selected = null;
+      this.ui.tile = null;
+      this.ui.plot = null;
+      this.setMode({ kind: 'select' });
+    }, 30);
+  }
+
+  acceptTidy() {
+    const plan = this.ui.tidy;
+    if (!plan) return;
+    this.ui.tidy = null;
+    if (this.check(applyTidy(this.state, plan))) {
+      this.play('link');
+      this.toast(this.t('ui.tidyDone'), 'success');
+    }
+    this.structureChanged();
+  }
+
+  cancelTidy() {
+    this.ui.tidy = null;
+    this.emit();
+  }
+
+  get beltView(): BeltView {
+    return this.state.settings.beltView ?? 'all';
+  }
+
+  cycleBeltView() {
+    const order: BeltView[] = ['all', 'dim', 'selected'];
+    this.state.settings.beltView = order[(order.indexOf(this.beltView) + 1) % order.length];
+    this.toast(this.t(`ui.beltView.${this.beltView}`), 'info');
+    this.structureChanged();
   }
 
   // ---------------------------------------------------------------- phase 2

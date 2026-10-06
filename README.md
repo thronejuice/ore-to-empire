@@ -20,7 +20,7 @@ To turn on accounts, cloud saves and the gem store, follow **[docs/SETUP-PHASE4.
 ## What's in the game
 
 - **Production:** 21 items over 5 tiers (ore → bars/steel/glass → parts → motors/circuits/engines → robot arms, computers, EVs). Drills, furnaces, assemblers, 2×2 fabricators.
-- **Logistics:** tap-to-connect belts with auto-routing, move any building (free for 1 min after building, then 10% of its value; belts re-route and keep their cargo), warehouses, loading docks; trucks, trains and ships to 5 markets with demand-driven prices and news events.
+- **Logistics:** tap-to-connect belts with auto-routing, one-tap "tidy belts" (global re-route with preview), belt view modes, cargo-coloured belts and bridges, move any building (free for 1 min after building, then 10% of its value; belts re-route and keep their cargo), warehouses, loading docks; trucks, trains and ships to 5 markets with demand-driven prices and news events.
 - **Power:** HQ grid, coal, solar, batteries, nuclear. Shortage slows every machine.
 - **Ore:** every deposit tile has a grade (low ×0.6 / normal / high ×1.5). Rich veins (×3, limited amount, low-ore warning) appear while you play and pause while you're away.
 - **Land:** buy adjacent plots; sand and uranium only exist on bought land.

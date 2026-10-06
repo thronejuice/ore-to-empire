@@ -103,6 +103,9 @@ export interface DailyMission {
   claimed: boolean;
 }
 
+/** how belts are drawn: all, dimmed, or only the selected building's */
+export type BeltView = 'all' | 'dim' | 'selected';
+
 export interface Vein {
   id: number;
   x: number;
@@ -141,7 +144,7 @@ export interface GameState {
   power: { gen: number; demand: number; satisfaction: number; battery: number; batteryMax: number };
   stats: Stats;
   quests: { done: string[]; tutorialSkipped: boolean };
-  settings: { lang: 'th' | 'en'; sound: boolean };
+  settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView };
 
   // ---- Phase 2
   research: { done: ResearchId[]; active: { id: ResearchId; remaining: number } | null };

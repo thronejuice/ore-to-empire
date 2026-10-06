@@ -3,7 +3,7 @@ import { BALANCE, BUILDINGS, ITEMS, POWER, VEINS, beltSpeed, storageCapacity, ty
 import { nextPlotPrice, plotForSale } from '../core/land';
 import { plotsPerRow } from '../core/state';
 import { gradeAt } from '../core/veins';
-import { canPlace } from '../core/actions';
+import { canPlace, linkCarriesIn } from '../core/actions';
 import { pointAt } from '../core/pathfind';
 import { getBuilding, hqPosition, idx, isUnlocked } from '../core/state';
 import type { Belt, Building } from '../core/types';
@@ -231,7 +231,9 @@ export class Renderer {
     this.world.position.set(this.cam.x, this.cam.y);
     this.world.scale.set(this.cam.scale);
 
-    const key = `${this.game.state.settings.lang}`;
+    const zoomBucket = this.cam.scale < 0.55 ? 'far' : 'near';
+    const ui = this.game.ui;
+    const key = `${this.game.state.settings.lang}|${this.game.beltView}|${ui.selected}|${zoomBucket}|${ui.tidy ? 'tidy' : ''}`;
     if (this.drawnVersion !== this.game.structureVersion || this.drawnKey !== key) {
       this.drawnVersion = this.game.structureVersion;
       this.drawnKey = key;
@@ -306,12 +308,89 @@ export class Renderer {
       }
   }
 
+  /** 0..1 visibility of a belt under the current view mode */
+  beltAlpha(belt: Belt): number {
+    const ui = this.game.ui;
+    if (ui.tidy) return 0.25; // the preview is drawn on top
+    const sel = ui.selected;
+    const mine = sel !== null && (belt.from === sel || belt.to === sel);
+    switch (this.game.beltView) {
+      case 'dim':
+        return mine ? 1 : 0.3;
+      case 'selected':
+        return mine ? 1 : sel === null ? 0.12 : 0;
+      default:
+        return 1;
+    }
+  }
+
+  /** colour of what a belt carries (its first accepted item), for the belt's edge */
+  private cargoColor(belt: Belt): number {
+    const s = this.game.state;
+    const from = getBuilding(s, belt.from);
+    const to = getBuilding(s, belt.to);
+    if (!from || !to) return C.beltEdge;
+    const carries = linkCarriesIn(s, from, to);
+    if (!carries.length) return C.bad;
+    if (from.type === 'warehouse' && carries.length > 3) return C.beltEdge; // mixed cargo
+    return ITEMS[carries[0]].color;
+  }
+
   private drawBelts() {
     const g = this.belts.clear();
-    for (const belt of this.game.state.belts) {
+    const s = this.game.state;
+    const thin = this.cam.scale < 0.55 ? 0.6 : 1;
+    const wEdge = TILE * 0.5 * thin;
+    const wBody = TILE * 0.36 * thin;
+    const colors = new Map(s.belts.map((b) => [b.id, this.cargoColor(b)]));
+
+    for (const belt of s.belts) {
+      const a = this.beltAlpha(belt);
+      if (a <= 0) continue;
       const pts = belt.points.flatMap(([x, y]) => [x * TILE, y * TILE]);
-      this.strokePath(g, pts, TILE * 0.5, C.beltEdge);
-      this.strokePath(g, pts, TILE * 0.38, C.beltBody);
+      this.strokePath(g, pts, wEdge, colors.get(belt.id)!, a * 0.75);
+      this.strokePath(g, pts, wBody, C.beltBody, a);
+    }
+
+    // bridges: where a belt runs over cells an earlier belt already uses, draw it raised
+    const seen = new Set<number>();
+    for (const belt of s.belts) {
+      const a = this.beltAlpha(belt);
+      for (let i = 0; i < belt.path.length; i++) {
+        const [x, y] = belt.path[i];
+        const k = idx(s, x, y);
+        if (!seen.has(k)) {
+          seen.add(k);
+          continue;
+        }
+        if (a <= 0) continue;
+        const prev = i > 0 ? belt.path[i - 1] : null;
+        const next = i < belt.path.length - 1 ? belt.path[i + 1] : null;
+        const [dx, dy] = next ? [next[0] - x, next[1] - y] : prev ? [x - prev[0], y - prev[1]] : [1, 0];
+        const cx = (x + 0.5) * TILE;
+        const cy = (y + 0.5) * TILE;
+        const half = TILE * 0.5;
+        const seg = [cx - dx * half, cy - dy * half, cx + dx * half, cy + dy * half];
+        g.moveTo(seg[0] + 2, seg[1] + 3).lineTo(seg[2] + 2, seg[3] + 3).stroke({ width: wEdge + 4, color: 0x000000, alpha: 0.45 * a });
+        this.strokePath(g, seg, wEdge + 2, colors.get(belt.id)!, a);
+        this.strokePath(g, seg, wBody, 0x323b48, a);
+        // rails
+        const nx = -dy * (wEdge / 2 + 0.5);
+        const ny = dx * (wEdge / 2 + 0.5);
+        g.moveTo(seg[0] + nx, seg[1] + ny).lineTo(seg[2] + nx, seg[3] + ny).moveTo(seg[0] - nx, seg[1] - ny).lineTo(seg[2] - nx, seg[3] - ny).stroke({ width: 1.5, color: 0xdfe6ee, alpha: 0.5 * a });
+      }
+    }
+
+    // tidy preview: the proposed routes, bright, over the faded current ones
+    const plan = this.game.ui.tidy;
+    if (plan) {
+      for (const belt of s.belts) {
+        const r = plan.routes.get(belt.id);
+        const points = r ? r.points : belt.points;
+        const pts = points.flatMap(([x, y]) => [x * TILE, y * TILE]);
+        this.strokePath(g, pts, wEdge, r ? C.ok : colors.get(belt.id)!, r ? 0.9 : 0.6);
+        this.strokePath(g, pts, wBody, C.beltBody, 0.9);
+      }
     }
   }
 
@@ -446,12 +525,16 @@ export class Renderer {
 
     // belt chevrons, scrolling at belt speed
     const offset = (this.time * speed) % 1;
+    const showMoving = !this.game.ui.tidy;
     for (const belt of s.belts) {
+      if (!showMoving || this.beltAlpha(belt) < 0.5) continue;
       for (let d = offset; d < belt.length; d += 1) this.chevron(g, belt, d);
     }
 
     // items
     for (const belt of s.belts) {
+      if (!showMoving || this.beltAlpha(belt) <= 0.15) continue;
+      const faded = this.beltAlpha(belt) < 1;
       let prev = Infinity;
       for (let i = 0; i < belt.items.length; i++) {
         const it = belt.items[i];
@@ -459,7 +542,7 @@ export class Renderer {
         const pos = Math.max(it.pos, Math.min(it.pos + lead, limit));
         prev = pos;
         const [px, py] = pointAt(belt.points, pos);
-        this.item(g, it.item, px * TILE, py * TILE, 6.5);
+        this.item(g, it.item, px * TILE, py * TILE, faded ? 4.5 : 6.5);
       }
     }
 

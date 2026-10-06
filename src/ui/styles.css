@@ -1537,3 +1537,73 @@ select:focus-visible {
   color: var(--blue);
   text-decoration: none;
 }
+
+/* ============================================================ map tools & tidy preview */
+
+.map-tools {
+  position: absolute;
+  right: 12px;
+  bottom: calc(16px + var(--safe-bottom));
+  z-index: 9;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+.tool-btn {
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  gap: 2px;
+  width: 64px;
+  padding: 7px 4px;
+  border-radius: 12px;
+  border: 1px solid var(--edge);
+  background: var(--panel);
+  box-shadow: 0 6px 18px rgba(0, 0, 0, 0.4);
+  font-size: 11px;
+  font-weight: 600;
+  color: var(--text);
+}
+.tool-btn:disabled {
+  opacity: 0.6;
+}
+.inspector ~ .map-tools,
+.map-tools.sheet-open {
+  right: 364px; /* beside the desktop inspector */
+}
+.tidy-bar {
+  flex-wrap: wrap;
+  border-color: var(--green) !important;
+}
+.tidy-stats {
+  display: flex;
+  flex-direction: column;
+  gap: 2px;
+  min-width: 0;
+}
+.tidy-actions {
+  display: flex;
+  gap: 8px;
+  margin-left: auto;
+}
+@media (max-width: 720px) {
+  .map-tools {
+    bottom: calc(92px + var(--safe-bottom));
+    right: 8px;
+  }
+  .map-tools.sheet-open {
+    display: none;
+  }
+  .tool-btn {
+    width: 56px;
+  }
+  .tidy-bar {
+    width: calc(100% - 16px);
+  }
+  .tidy-actions {
+    width: 100%;
+  }
+  .tidy-actions .btn {
+    flex: 1;
+  }
+}

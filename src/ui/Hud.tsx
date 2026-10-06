@@ -167,6 +167,34 @@ export function BottomBar() {
   const buildHi = useHighlight('build-btn');
   const linkHi = useHighlight('link-btn');
 
+  const plan = game.ui.tidy;
+  if (plan) {
+    const b = plan.before;
+    const a = plan.after;
+    return (
+      <div className="bottombar mode tidy-bar">
+        <div className="tidy-stats">
+          <strong>{t('ui.tidyPreview')}</strong>
+          <span className="small">
+            {t('ui.tidyCrossings')} <span className="mono">{b.crossings} → </span>
+            <span className={`mono ${a.crossings < b.crossings ? 'good' : ''}`}>{a.crossings}</span> · {t('ui.tidyLength')}{' '}
+            <span className="mono">{b.tiles} → </span>
+            <span className={`mono ${a.tiles < b.tiles ? 'good' : ''}`}>{a.tiles}</span>
+          </span>
+          <span className="small dim">{plan.cost > 0 ? `${t('ui.cost')} ${fmtMoney(plan.cost)}` : t('ui.free')}</span>
+        </div>
+        <div className="tidy-actions">
+          <button className="btn ghost" onClick={() => game.cancelTidy()}>
+            {t('ui.cancel')}
+          </button>
+          <button className="btn primary" disabled={game.state.money < plan.cost} onClick={() => game.acceptTidy()}>
+            {t('ui.tidyApply')}
+          </button>
+        </div>
+      </div>
+    );
+  }
+
   if (mode.kind !== 'select') {
     let hint = '';
     if (mode.kind === 'build') {
@@ -210,6 +238,33 @@ export function BottomBar() {
       </button>
       <button className={`btn big ${linkHi ? 'tut-pulse' : ''}`} onClick={() => game.setMode({ kind: 'link', from: null })} data-tut="link-btn">
         ⇢ {t('ui.link')}
+      </button>
+    </div>
+  );
+}
+
+/** floating map tools: belt view mode and tidy belts */
+export function MapTools() {
+  const game = useGame();
+  const t = useT();
+  if (game.ui.tidy || game.ui.mode.kind !== 'select' || !game.state.belts.length) return null;
+  const sheetOpen = game.ui.selected !== null || game.ui.plot || game.ui.tile;
+  const view = game.beltView;
+  return (
+    <div className={`map-tools ${sheetOpen ? 'sheet-open' : ''}`}>
+      <button className="tool-btn" onClick={() => game.cycleBeltView()} title={t(`ui.beltView.${view}`)} aria-label={t(`ui.beltView.${view}`)}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" aria-hidden>
+          <path d="M3 7h18M3 12h18M3 17h18" opacity={view === 'all' ? 1 : 0.35} />
+          {view !== 'all' && <path d="M3 12h18" />}
+        </svg>
+        <span>{t(`ui.beltViewShort.${view}`)}</span>
+      </button>
+      <button className="tool-btn" disabled={game.ui.busy} onClick={() => game.previewTidy()} title={t('ui.tidyTip')}>
+        <svg width="20" height="20" viewBox="0 0 24 24" fill="none" stroke="currentColor" strokeWidth="1.8" strokeLinecap="round" strokeLinejoin="round" aria-hidden>
+          <path d="M4 6h6l4 6h6M4 18h6l4-6" />
+          <path d="M17 9l3 3-3 3" />
+        </svg>
+        <span>{game.ui.busy ? t('ui.working') : t('ui.tidy')}</span>
       </button>
     </div>
   );

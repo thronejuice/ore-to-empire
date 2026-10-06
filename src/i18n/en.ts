@@ -458,6 +458,24 @@ export const en = {
 
   'ui.changeRecipe': 'Change recipe ({n}) ▾',
   'ui.hideRecipes': 'Hide recipes ▴',
+
+  'ui.tidy': 'Tidy belts',
+  'ui.tidyTip': 'Re-route all belts for fewer crossings. Buildings stay put; you see a preview first.',
+  'ui.tidyThis': 'Tidy this building\'s belts',
+  'ui.tidyPreview': 'New belt layout',
+  'ui.tidyCrossings': 'Crossings',
+  'ui.tidyLength': 'Length',
+  'ui.tidyApply': 'Use this layout',
+  'ui.tidyDone': 'Belts re-routed',
+  'ui.tidyNothing': 'The belts are already as tidy as they can get. Moving buildings can open better routes.',
+  'ui.working': 'Working…',
+  'ui.beltView.all': 'Belts: show all',
+  'ui.beltView.dim': 'Belts: dimmed (selected building\'s stay bright)',
+  'ui.beltView.selected': 'Belts: only the selected building\'s',
+  'ui.beltViewShort.all': 'All',
+  'ui.beltViewShort.dim': 'Dim',
+  'ui.beltViewShort.selected': 'Selected',
+  'err.layoutChanged': 'The factory changed — make a new preview',
 };
 
 export type Dict = Record<keyof typeof en, string>;

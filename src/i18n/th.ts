@@ -460,4 +460,22 @@ export const th: Dict = {
 
   'ui.changeRecipe': 'เปลี่ยนสูตร ({n}) ▾',
   'ui.hideRecipes': 'ซ่อนสูตร ▴',
+
+  'ui.tidy': 'จัดสายพาน',
+  'ui.tidyTip': 'วางสายพานใหม่ทั้งหมดให้ข้ามกันน้อยลง อาคารอยู่ที่เดิม และดูตัวอย่างก่อนยืนยัน',
+  'ui.tidyThis': 'จัดสายพานของอาคารนี้',
+  'ui.tidyPreview': 'ผังสายพานใหม่',
+  'ui.tidyCrossings': 'จุดข้าม',
+  'ui.tidyLength': 'ความยาว',
+  'ui.tidyApply': 'ใช้ผังนี้',
+  'ui.tidyDone': 'จัดสายพานใหม่แล้ว',
+  'ui.tidyNothing': 'สายพานเป็นระเบียบที่สุดแล้วสำหรับผังนี้ ลองย้ายอาคารเพื่อเปิดทางใหม่',
+  'ui.working': 'กำลังคำนวณ…',
+  'ui.beltView.all': 'สายพาน: แสดงทั้งหมด',
+  'ui.beltView.dim': 'สายพาน: แสดงจาง (ของอาคารที่เลือกยังชัด)',
+  'ui.beltView.selected': 'สายพาน: แสดงเฉพาะของอาคารที่เลือก',
+  'ui.beltViewShort.all': 'ทั้งหมด',
+  'ui.beltViewShort.dim': 'จาง',
+  'ui.beltViewShort.selected': 'ที่เลือก',
+  'err.layoutChanged': 'โรงงานเปลี่ยนไปแล้ว กดดูตัวอย่างใหม่อีกครั้ง',
 };
