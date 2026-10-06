@@ -1,0 +1,1972 @@
+diff --git a/.env.example b/.env.example
+index 2bd7ee2..e2d36be 100644
+--- a/.env.example
++++ b/.env.example
+@@ -6,3 +6,6 @@ VITE_SUPABASE_ANON_KEY=your-anon-public-key
+ VITE_OMISE_PUBLIC_KEY=pkey_test_xxxxxxxxxxxx
+ # LINE Developers → your LINE Login channel → Channel ID
+ VITE_LINE_CHANNEL_ID=1234567890
++# Optional: Cloudflare Turnstile site key (bot check when creating player accounts).
++# Set TURNSTILE_SECRET in Supabase secrets too, or leave both empty.
++VITE_TURNSTILE_SITE_KEY=
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index c77f43b..eecad49 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -1,6 +1,7 @@
+ # บันทึกการเปลี่ยนแปลง (Changelog)
+ 
+ รูปแบบเลขเวอร์ชัน: `MAJOR.MINOR.PATCH`
++- **MAJOR** (**x**.0.0) เปลี่ยนใหญ่ที่กระทบผู้เล่นทุกคน (เช่น ระบบบัญชี) · v0.x คือช่วงพัฒนา v1.0.0 คือเวอร์ชันแรกที่พร้อมเปิดให้เล่น
+ - **MINOR** (0.**x**.0) เพิ่มระบบหรือฟีเจอร์ใหม่
+ - **PATCH** (0.0.**x**) แก้บั๊ก ปรับหน้าจอ ปรับตัวเลข โดยไม่เพิ่มระบบใหม่
+ 
+@@ -8,6 +9,34 @@
+ 
+ <!-- release-script: each "## [x.y.z]" section is copied into releases/vx.y.z/CHANGES.md -->
+ 
++## [1.0.0] - 2026-10-06
++
++เวอร์ชันแรกที่พร้อมเปิดให้เล่น (v0.1.0–v0.7.1 คือช่วงพัฒนา)
++
++### เพิ่มใหม่
++- **ตั้งชื่อผู้เล่นก่อนเข้าเกม** ชื่อห้ามซ้ำ (ไม่สนตัวพิมพ์เล็ก/ใหญ่) ใช้ภาษาไทย อังกฤษ ตัวเลข และ `_` ได้ 3–16 ตัว ตรวจชื่อว่างทันทีขณะพิมพ์
++- **ไม่ต้องล็อกอินอีก:** ระบบสร้างบัญชีพร้อมรหัสผ่านสุ่มและเก็บไว้ในเครื่องผู้เล่น เปิดเกมครั้งต่อไปเข้าสู่ระบบเอง
++- **รหัสกู้คืน** `ORE-XXXX-XXXX-XXXX-XXXX` แสดงครั้งเดียวหลังสร้างบัญชี (ปุ่มคัดลอก และต้องติ๊ก "เก็บแล้ว" ก่อนเล่น) ใช้กู้บัญชีบนเครื่องใหม่ผ่านปุ่ม "มีบัญชีอยู่แล้ว"
++- หน้า **บัญชี**: แสดงชื่อ, รหัสกู้คืน (ซ่อนตรงกลาง กดแสดง/คัดลอกได้), สร้างรหัสใหม่, ผูกอีเมล/Google/LINE เป็นช่องทางสำรอง
++- ไม่มีเน็ตตอนเปิดครั้งแรก: เล่นไปก่อนได้ บัญชีถูกสร้างอัตโนมัติเมื่อออนไลน์ (ถ้าชื่อถูกใช้ไปแล้ว ระบบขอให้ตั้งใหม่ โรงงานไม่หาย)
++- ผู้เล่นเดิมที่เข้าด้วยอีเมล/Google/LINE ถูกขอให้ตั้งชื่อครั้งเดียว
++- เวอร์ชันไม่มีเซิร์ฟเวอร์ (ไฟล์เดียว) ก็ถามชื่อก่อนเล่น เก็บชื่อไว้ในเซฟของเครื่อง
++
++### ความปลอดภัย
++- เก็บรหัสกู้คืนเป็น bcrypt hash · ใส่ผิด 5 ครั้งล็อก 15 นาที · ตอบเหมือนกันทั้งชื่อผิดและรหัสผิด
++- จำกัดการสร้างบัญชี 5 บัญชี/ชั่วโมง/IP · รองรับ Cloudflare Turnstile (ไม่บังคับ)
++- กู้บัญชีแล้วรหัสบนเครื่องเก่าใช้ไม่ได้ เครื่องเก่าจะแจ้งให้ใส่รหัสกู้คืน
++- ออกจากระบบ = ลบรหัสบนเครื่องนี้ (ต้องกดยืนยันสองครั้ง)
++
++### เซิร์ฟเวอร์ (ต้องทำเพิ่มถ้าใช้ระบบออนไลน์)
++- migration ใหม่ `20261006020000_player_names.sql` → `supabase db push`
++- edge function ใหม่ `player-account` → `supabase functions deploy player-account --no-verify-jwt`
++- `line-auth` อัปเดต (ผูก LINE เข้าบัญชีเดิม) → deploy ใหม่
++- ตั้งค่า Supabase ตาม `docs/SETUP-PHASE4.md` ข้อ 2 (Allow manual linking, ปิด Secure email change)
++
++### เซฟ
++- ใช้เซฟเดิมได้ เพิ่มช่อง `player` (ชื่อ) แบบไม่บังคับ ไม่เปลี่ยนเลขรูปแบบเซฟ
++
+ ## [0.7.1] - 2026-10-06
+ 
+ ### ปรับปรุง
+diff --git a/README.md b/README.md
+index 2e9c17c..eb1d6a1 100644
+--- a/README.md
++++ b/README.md
+@@ -27,6 +27,7 @@ To turn on accounts, cloud saves and the gem store, follow **[docs/SETUP-PHASE4.
+ - **Research:** 23 timed projects in 5 tiers (keeps running offline).
+ - **Meta:** tutorial + guided quests, contracts, 3 daily missions (gems), prestige ("sell the company" for shares and perks), gem items (time skip, income ×2, offline cap).
+ - **Offline progress:** up to 8 h (more with perks/gems); server clock for signed-in players.
++- **Accounts (v1.0.0):** pick a unique player name before playing; the server creates the account with a random password kept on the device (no login next time) and a one-time recovery code for new devices. Email, Google and LINE can be linked as backups.
+ 
+ ## Project layout
+ 
+@@ -48,7 +49,7 @@ src/
+   i18n/                 Thai + English
+ supabase/
+   migrations/           schema, RLS, gem/save functions
+-  functions/            create-charge, omise-webhook, line-auth (Deno)
++  functions/            player-account, create-charge, omise-webhook, line-auth (Deno)
+ public/line-callback.html
+ tests/                  vitest simulation tests
+ docs/SETUP-PHASE4.md    online setup guide (Thai)
+@@ -58,3 +59,20 @@ docs/SETUP-PHASE4.md    online setup guide (Thai)
+ 
+ All numbers are in `src/config/balance.ts` and `src/config/meta.ts`.
+ Gem prices also live on the server (`supabase/functions/_shared/packs.ts`, `spend_gems` in the migration) — the server copy decides what players pay.
++
++## Versions & releases
++
++- `CHANGELOG.md` — what changed in every version (Thai).
++- `releases/v<x.y.z>/` — one folder per version: `index.html` (play that version, its own save slot),
++  `CHANGES.md` (summary + changed files) and `update-from-v<prev>.patch`.
++- Every version is a git tag: `git checkout v0.5.0` gives that exact source.
++
++Releasing a new version:
++
++```bash
++# 1. bump "version" in package.json and add a "## [x.y.z] - date" section to CHANGELOG.md
++git commit -am "vX.Y.Z: ..."
++git tag -a vX.Y.Z -m "vX.Y.Z ..."
++npm run release -- X.Y.Z        # builds releases/vX.Y.Z and updates releases/README.md
++git add releases && git commit -m "release vX.Y.Z"
++```
+diff --git a/docs/SETUP-PHASE4.md b/docs/SETUP-PHASE4.md
+index d182a1b..f14cbf4 100644
+--- a/docs/SETUP-PHASE4.md
++++ b/docs/SETUP-PHASE4.md
+@@ -53,6 +53,12 @@ supabase db push                               # สร้างตาราง
+ 
+ **อีเมล (magic link):** เปิดไว้ตั้งแต่ต้น แนะนำให้ตั้ง SMTP ของตัวเองใน Authentication → Emails เพราะ SMTP ฟรีของ Supabase ส่งได้จำนวนจำกัดต่อชั่วโมง
+ 
++**ชื่อผู้เล่น + รหัสบนเครื่อง (v1.0.0, วิธีหลัก)**
++- Providers → **Email** ต้องเปิดอยู่ (ระบบใช้ล็อกอินแบบอีเมล+รหัสผ่านเบื้องหลัง ผู้เล่นไม่เห็น)
++- Authentication → Settings: เปิด **Allow manual linking** (ให้ผู้เล่นผูก Google เพิ่มเข้าบัญชีเดิมได้)
++- Authentication → Emails / Settings: ปิด **Secure email change** เพื่อให้ผู้เล่นเพิ่มอีเมลจริงแทนอีเมลภายในได้ โดยยืนยันที่อีเมลใหม่อย่างเดียว
++- บัญชีที่สร้างจากชื่อผู้เล่นใช้อีเมลภายใน `p-<uuid>@players.ore-to-empire.local` ซึ่งไม่มีการส่งเมลจริง ถ้า Supabase ไม่รับโดเมนนี้ ให้ตั้ง secret `PLAYER_EMAIL_DOMAIN` เป็นซับโดเมนของคุณเอง เช่น `players.<โดเมนของเกม>`
++
+ **Google**
+ 1. Google Cloud Console → APIs & Services → Credentials → Create OAuth client ID (Web application)
+ 2. Authorized redirect URI: `https://<PROJECT_REF>.supabase.co/auth/v1/callback`
+@@ -99,11 +105,27 @@ supabase secrets set \
+ supabase functions deploy create-charge
+ supabase functions deploy omise-webhook --no-verify-jwt
+ supabase functions deploy line-auth --no-verify-jwt
++supabase functions deploy player-account --no-verify-jwt
+ ```
+ 
++ตัวเลือกเพิ่มเติมของ `player-account` (ไม่ตั้งก็ได้):
++- `PLAYER_EMAIL_DOMAIN` — โดเมนของอีเมลภายใน (ดูข้อ 2)
++- `TURNSTILE_SECRET` — เปิดการตรวจบอทของ Cloudflare Turnstile ตอนสร้างบัญชี ต้องใส่ `VITE_TURNSTILE_SITE_KEY` ใน `.env` คู่กันด้วย
++
+ `SUPABASE_URL`, `SUPABASE_ANON_KEY` และ `SUPABASE_SERVICE_ROLE_KEY` มีให้ใน edge functions อัตโนมัติ ไม่ต้องตั้งเอง
+ 
+-`omise-webhook` และ `line-auth` ต้องใช้ `--no-verify-jwt` เพราะ Omise และหน้า callback ของ LINE ไม่มี token ของ Supabase ส่วนความปลอดภัย webhook ดึง charge จาก Omise ใหม่ทุกครั้ง และ `line-auth` ตรวจ ID token กับ LINE ทุกครั้ง
++`omise-webhook`, `line-auth` และ `player-account` ต้องใช้ `--no-verify-jwt` เพราะ Omise และหน้า callback ของ LINE ไม่มี token ของ Supabase ส่วนความปลอดภัย webhook ดึง charge จาก Omise ใหม่ทุกครั้ง และ `line-auth` ตรวจ ID token กับ LINE ทุกครั้ง
++
++### ระบบบัญชีแบบชื่อผู้เล่น ทำงานอย่างไร (v1.0.0)
++
++1. เปิดเกมครั้งแรก ผู้เล่นตั้งชื่อ (ห้ามซ้ำ ตรวจทันทีขณะพิมพ์) ก่อนเริ่มเล่น
++2. `player-account` สร้างผู้ใช้ใน Supabase พร้อม**รหัสผ่านสุ่มยาว** และ**รหัสกู้คืน** `ORE-XXXX-XXXX-XXXX-XXXX`
++3. รหัสผ่านเก็บในเครื่องผู้เล่น (`localStorage`) เปิดเกมครั้งต่อไปเข้าสู่ระบบเองโดยไม่ต้องทำอะไร
++4. รหัสกู้คืนแสดงครั้งเดียว ฐานข้อมูลเก็บเฉพาะค่า hash แบบ bcrypt
++5. เปลี่ยนเครื่อง: กด "มีบัญชีอยู่แล้ว" ใส่ชื่อ + รหัสกู้คืน ระบบออกรหัสผ่านใหม่ให้เครื่องนั้น (เครื่องเก่าจะถูกออกจากระบบ) หรือเข้าด้วยอีเมล/Google/LINE ที่ผูกไว้
++6. กันเดารหัส: ผิด 5 ครั้งล็อก 15 นาที · สร้างบัญชีได้ไม่เกิน 5 บัญชี/ชั่วโมง/IP
++
++ผู้เล่นเดิมที่เคยเข้าด้วยอีเมล/Google/LINE จะถูกขอให้ตั้งชื่อครั้งเดียวตอนเข้าเกม
+ 
+ ---
+ 
+diff --git a/package.json b/package.json
+index 2594bd3..28846da 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "0.7.1",
++  "version": "1.0.0",
+   "scripts": {
+     "dev": "vite",
+     "build": "tsc --noEmit && vite build",
+diff --git a/scripts/release.mjs b/scripts/release.mjs
+index 5314e41..2c189cb 100644
+--- a/scripts/release.mjs
++++ b/scripts/release.mjs
+@@ -52,6 +52,8 @@ function build(tag) {
+     execFileSync('npx', ['vite', 'build', '--mode', 'single', '--outDir', join(tmp, 'dist'), '--logLevel', 'error'], { cwd: wt, stdio: 'inherit' });
+     let html = readFileSync(join(tmp, 'dist', 'index.html'), 'utf8');
+     html = html.replace(/ore-to-empire\/save(?!\/)/g, `ore-to-empire/save/${tag}`);
++    // builds before v0.7.1 had a hard-coded version label; show the real one
++    html = html.replace(/Ore to Empire · (?:Phase 1 · )?v\d+\.\d+\.\d+/g, `Ore to Empire · ${tag}`);
+     writeFileSync(join(out, 'index.html'), html);
+   } finally {
+     git('worktree', 'remove', '--force', wt);
+diff --git a/src/core/player.ts b/src/core/player.ts
+new file mode 100644
+index 0000000..caddc9f
+--- /dev/null
++++ b/src/core/player.ts
+@@ -0,0 +1,34 @@
++/**
++ * Player names and recovery codes. The same rules run on the server
++ * (supabase/migrations/…_player_names.sql and functions/player-account).
++ */
++
++export const NAME_MIN = 3;
++export const NAME_MAX = 16;
++const NAME_RE = /^[A-Za-z0-9_ก-๙]+$/;
++const RESERVED = ['admin', 'administrator', 'system', 'support', 'moderator', 'staff', 'oretoempire', 'ore_to_empire'];
++
++export type NameProblem = 'short' | 'long' | 'chars' | 'reserved';
++
++/** null when the name is fine */
++export function nameProblem(raw: string): NameProblem | null {
++  const name = raw.trim();
++  if ([...name].length < NAME_MIN) return 'short';
++  if ([...name].length > NAME_MAX) return 'long';
++  if (!NAME_RE.test(name)) return 'chars';
++  if (RESERVED.includes(name.toLowerCase())) return 'reserved';
++  return null;
++}
++
++/** "ore abcd efgh ijkl mnpq" / "ABCDEFGHIJKLMNPQ" → "ORE-ABCD-EFGH-IJKL-MNPQ"; null if it can't be a code */
++export function normaliseCode(raw: string): string | null {
++  const s = raw.toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^ORE/, '');
++  if (s.length !== 16) return null;
++  return `ORE-${s.slice(0, 4)}-${s.slice(4, 8)}-${s.slice(8, 12)}-${s.slice(12, 16)}`;
++}
++
++/** "ORE-ABCD-••••-••••-MNPQ" */
++export function maskCode(code: string): string {
++  const p = code.split('-');
++  return p.length === 5 ? `${p[0]}-${p[1]}-••••-••••-${p[4]}` : '••••';
++}
+diff --git a/src/core/prestige.ts b/src/core/prestige.ts
+index d22f16a..992f161 100644
+--- a/src/core/prestige.ts
++++ b/src/core/prestige.ts
+@@ -44,6 +44,7 @@ export function prestige(s: GameState, seed = Math.floor(Math.random() * 1e9), n
+   const gained = sharesFor(s.stats.totalEarned);
+   const next = newGame(seed, now);
+   next.settings = { ...s.settings };
++  next.player = s.player;
+   next.prestige = {
+     count: s.prestige.count + 1,
+     shares: s.prestige.shares + gained,
+diff --git a/src/core/types.ts b/src/core/types.ts
+index 6415d9e..22e4b26 100644
+--- a/src/core/types.ts
++++ b/src/core/types.ts
+@@ -145,6 +145,8 @@ export interface GameState {
+   stats: Stats;
+   quests: { done: string[]; tutorialSkipped: boolean };
+   settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView };
++  /** the player's name (v1.0.0; older saves don't have one until the player picks it) */
++  player?: { name: string };
+ 
+   // ---- Phase 2
+   research: { done: ResearchId[]; active: { id: ResearchId; remaining: number } | null };
+diff --git a/src/game.ts b/src/game.ts
+index 9178def..8197de2 100644
+--- a/src/game.ts
++++ b/src/game.ts
+@@ -733,6 +733,12 @@ export class Game {
+     this.structureChanged();
+   }
+ 
++  setPlayerName(name: string) {
++    this.state.player = { name };
++    this.save();
++    this.emit();
++  }
++
+   setSound(on: boolean) {
+     this.state.settings.sound = on;
+     setSoundEnabled(on);
+@@ -744,6 +750,7 @@ export class Game {
+     this.store.clear();
+     const fresh = newGame();
+     fresh.settings = { ...this.state.settings };
++    fresh.player = this.state.player; // the name belongs to the player, not the factory
+     this.ui = { ...this.ui, panel: 'none', offline: null };
+     this.replaceState(fresh);
+   }
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index f7bd928..36c6af2 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -476,6 +476,64 @@ export const en = {
+   'ui.beltViewShort.dim': 'Dim',
+   'ui.beltViewShort.selected': 'Selected',
+   'err.layoutChanged': 'The factory changed — make a new preview',
++  'acct.welcome': 'Welcome, boss',
++  'acct.pickName': 'Pick a name to start. Your account is created for you — no password, no sign-in next time.',
++  'acct.pickNameLocal': 'Pick a name for your company to start.',
++  'acct.yourName': 'Player name',
++  'acct.namePlaceholder': 'e.g. SteelKing',
++  'acct.nameRules': '3–16 letters (Thai or English), numbers or _ · must be unique',
++  'acct.name.short': 'At least 3 characters',
++  'acct.name.long': 'At most 16 characters',
++  'acct.name.chars': 'Only Thai or English letters, numbers and _',
++  'acct.name.reserved': 'That name is reserved',
++  'acct.checking': 'Checking…',
++  'acct.nameFree': '✓ This name is free',
++  'acct.start': 'Start playing',
++  'acct.creating': 'Creating your account…',
++  'acct.playOffline': 'No connection — play now, create the account later',
++  'acct.autoLogin': 'This device remembers you automatically.',
++  'acct.haveAccount': 'I already have an account',
++  'acct.newPlayer': 'New player? Pick a name',
++  'acct.takenNow': 'Someone took your name while you were offline. Please pick another — your factory is safe.',
++  'acct.keyReplaced': 'This device was signed out because the account was restored on another device. Enter your recovery code to continue here.',
++  'acct.setNameTitle': 'Pick your player name',
++  'acct.setNameBody': 'Every player now has a unique name. Your factory and gems stay the same.',
++  'acct.confirmName': 'Use this name',
++  'acct.codeTitle': 'Account ready, {name}!',
++  'acct.codeBody': 'This is your recovery code. It is the only way to get your account back on a new phone or after clearing the browser.',
++  'acct.codeWhy1': 'Screenshot it or keep it in your notes. Never share it.',
++  'acct.codeWhy2': 'You can also add email, Google or LINE later in Account.',
++  'acct.codeSaved': 'I saved my recovery code',
++  'acct.letsPlay': "Let's play",
++  'acct.copy': 'Copy',
++  'acct.copied': 'Copied ✓',
++  'acct.recoverTitle': 'Restore your account',
++  'acct.recoveryCode': 'Recovery code',
++  'acct.restore': 'Restore',
++  'acct.orBackup': 'or sign in with a linked account',
++  'acct.player': 'Player',
++  'acct.cloudHint': 'Saved to the cloud every 30 seconds. This device signs you in automatically.',
++  'acct.show': 'Show',
++  'acct.hide': 'Hide',
++  'acct.noCodeHere': 'The code is not stored on this device. Make a new one if you lost it.',
++  'acct.newCode': 'Make a new recovery code',
++  'acct.newCodeConfirm': 'Tap again — the old code will stop working',
++  'acct.backup': 'Backup sign-in',
++  'acct.backupWhy': 'Add email, Google or LINE so you can sign in without the recovery code.',
++  'acct.addEmail': 'Add',
++  'acct.linkSent': 'Check {email} and tap the link to confirm.',
++  'acct.linkGoogle': 'Link Google',
++  'acct.linkLine': 'Link LINE',
++  'acct.lineLinked': 'LINE linked to your account',
++  'acct.signOutConfirm': 'Tap again — you will need your recovery code to come back',
++  'acct.err.name_taken': 'That name is taken',
++  'acct.err.bad_name': 'That name is not allowed',
++  'acct.err.too_many': 'Too many new accounts from this network. Try again in an hour.',
++  'acct.err.captcha': 'Please complete the check below',
++  'acct.err.bad_code': 'Name or recovery code is wrong',
++  'acct.err.locked': 'Too many wrong tries. Wait 15 minutes.',
++  'acct.err.name_already_set': 'This account already has a name',
++  'acct.err.line_in_use': 'That LINE account belongs to another player',
+ };
+ 
+ export type Dict = Record<keyof typeof en, string>;
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index fe79ae6..b413b49 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -478,4 +478,62 @@ export const th: Dict = {
+   'ui.beltViewShort.dim': 'จาง',
+   'ui.beltViewShort.selected': 'ที่เลือก',
+   'err.layoutChanged': 'โรงงานเปลี่ยนไปแล้ว กดดูตัวอย่างใหม่อีกครั้ง',
++  'acct.welcome': 'ยินดีต้อนรับ เถ้าแก่',
++  'acct.pickName': 'ตั้งชื่อเพื่อเริ่มเล่น ระบบจะสร้างบัญชีให้อัตโนมัติ ไม่ต้องมีรหัสผ่าน ครั้งหน้าไม่ต้องล็อกอิน',
++  'acct.pickNameLocal': 'ตั้งชื่อบริษัทของคุณเพื่อเริ่มเล่น',
++  'acct.yourName': 'ชื่อผู้เล่น',
++  'acct.namePlaceholder': 'เช่น เจ้าพ่อเหล็ก',
++  'acct.nameRules': '3–16 ตัว ใช้ตัวอักษรไทย/อังกฤษ ตัวเลข หรือ _ · ห้ามซ้ำกับคนอื่น',
++  'acct.name.short': 'อย่างน้อย 3 ตัวอักษร',
++  'acct.name.long': 'ไม่เกิน 16 ตัวอักษร',
++  'acct.name.chars': 'ใช้ได้เฉพาะตัวอักษรไทย/อังกฤษ ตัวเลข และ _',
++  'acct.name.reserved': 'ชื่อนี้สงวนไว้',
++  'acct.checking': 'กำลังตรวจสอบ…',
++  'acct.nameFree': '✓ ชื่อนี้ว่าง ใช้ได้',
++  'acct.start': 'เริ่มเล่น',
++  'acct.creating': 'กำลังสร้างบัญชี…',
++  'acct.playOffline': 'ไม่มีเน็ต — เล่นไปก่อน แล้วสร้างบัญชีทีหลัง',
++  'acct.autoLogin': 'เครื่องนี้จะจำคุณไว้ให้อัตโนมัติ',
++  'acct.haveAccount': 'มีบัญชีอยู่แล้ว',
++  'acct.newPlayer': 'ผู้เล่นใหม่? ตั้งชื่อ',
++  'acct.takenNow': 'มีคนใช้ชื่อของคุณไปตอนที่คุณออฟไลน์ กรุณาตั้งชื่อใหม่ — โรงงานของคุณยังอยู่ครบ',
++  'acct.keyReplaced': 'เครื่องนี้ถูกออกจากระบบ เพราะมีการกู้บัญชีบนเครื่องอื่น ใส่รหัสกู้คืนเพื่อเล่นต่อที่เครื่องนี้',
++  'acct.setNameTitle': 'ตั้งชื่อผู้เล่น',
++  'acct.setNameBody': 'ตอนนี้ผู้เล่นทุกคนมีชื่อไม่ซ้ำกัน โรงงานและเพชรของคุณยังอยู่เหมือนเดิม',
++  'acct.confirmName': 'ใช้ชื่อนี้',
++  'acct.codeTitle': 'สร้างบัญชีแล้ว {name}!',
++  'acct.codeBody': 'นี่คือรหัสกู้คืนบัญชี เป็นทางเดียวที่จะเอาบัญชีกลับมาเมื่อเปลี่ยนมือถือหรือล้างข้อมูลเบราว์เซอร์',
++  'acct.codeWhy1': 'แคปหน้าจอหรือจดเก็บไว้ในโน้ต ห้ามบอกใคร',
++  'acct.codeWhy2': 'เพิ่มอีเมล Google หรือ LINE ไว้สำรองได้ภายหลังที่หน้า บัญชี',
++  'acct.codeSaved': 'ฉันเก็บรหัสกู้คืนไว้แล้ว',
++  'acct.letsPlay': 'ไปเล่นกันเลย',
++  'acct.copy': 'คัดลอก',
++  'acct.copied': 'คัดลอกแล้ว ✓',
++  'acct.recoverTitle': 'กู้คืนบัญชี',
++  'acct.recoveryCode': 'รหัสกู้คืน',
++  'acct.restore': 'กู้คืน',
++  'acct.orBackup': 'หรือเข้าด้วยบัญชีที่ผูกไว้',
++  'acct.player': 'ผู้เล่น',
++  'acct.cloudHint': 'บันทึกขึ้นคลาวด์ทุก 30 วินาที เครื่องนี้เข้าสู่ระบบให้อัตโนมัติ',
++  'acct.show': 'แสดง',
++  'acct.hide': 'ซ่อน',
++  'acct.noCodeHere': 'เครื่องนี้ไม่ได้เก็บรหัสไว้ ถ้าทำหายให้สร้างรหัสใหม่',
++  'acct.newCode': 'สร้างรหัสกู้คืนใหม่',
++  'acct.newCodeConfirm': 'กดอีกครั้ง — รหัสเดิมจะใช้ไม่ได้',
++  'acct.backup': 'ช่องทางเข้าสำรอง',
++  'acct.backupWhy': 'ผูกอีเมล Google หรือ LINE ไว้ จะได้เข้าเล่นได้โดยไม่ต้องใช้รหัสกู้คืน',
++  'acct.addEmail': 'เพิ่ม',
++  'acct.linkSent': 'เปิดอีเมล {email} แล้วกดลิงก์เพื่อยืนยัน',
++  'acct.linkGoogle': 'ผูกบัญชี Google',
++  'acct.linkLine': 'ผูกบัญชี LINE',
++  'acct.lineLinked': 'ผูก LINE กับบัญชีแล้ว',
++  'acct.signOutConfirm': 'กดอีกครั้ง — ต้องใช้รหัสกู้คืนถึงจะกลับมาได้',
++  'acct.err.name_taken': 'ชื่อนี้มีคนใช้แล้ว',
++  'acct.err.bad_name': 'ใช้ชื่อนี้ไม่ได้',
++  'acct.err.too_many': 'สร้างบัญชีจากเครือข่ายนี้มากเกินไป ลองใหม่ในอีก 1 ชั่วโมง',
++  'acct.err.captcha': 'กรุณายืนยันตัวตนด้านล่างก่อน',
++  'acct.err.bad_code': 'ชื่อหรือรหัสกู้คืนไม่ถูกต้อง',
++  'acct.err.locked': 'ใส่ผิดหลายครั้งเกินไป รอ 15 นาที',
++  'acct.err.name_already_set': 'บัญชีนี้มีชื่อแล้ว',
++  'acct.err.line_in_use': 'บัญชี LINE นี้เป็นของผู้เล่นคนอื่น',
+ };
+diff --git a/src/online/config.ts b/src/online/config.ts
+index 1271098..63acf8c 100644
+--- a/src/online/config.ts
++++ b/src/online/config.ts
+@@ -8,16 +8,18 @@ export const ONLINE = {
+   supabaseAnonKey: import.meta.env.VITE_SUPABASE_ANON_KEY ?? '',
+   omisePublicKey: import.meta.env.VITE_OMISE_PUBLIC_KEY ?? '',
+   lineChannelId: import.meta.env.VITE_LINE_CHANNEL_ID ?? '',
++  turnstileSiteKey: import.meta.env.VITE_TURNSTILE_SITE_KEY ?? '',
+ };
+ 
+ export const onlineConfigured = !!(ONLINE.supabaseUrl && ONLINE.supabaseAnonKey);
+ export const paymentsConfigured = onlineConfigured && !!ONLINE.omisePublicKey;
+ export const lineConfigured = onlineConfigured && !!ONLINE.lineChannelId;
+ 
+-/** is there a stored Supabase session? (sync check so the game can wait for server time) */
++/** is there a stored Supabase session or device key? (sync check so the game can wait for server time) */
+ export function hasStoredSession(): boolean {
+   if (!onlineConfigured) return false;
+   try {
++    if (localStorage.getItem('ore-to-empire/device-login')?.includes('"password"')) return true;
+     for (let i = 0; i < localStorage.length; i++) {
+       const k = localStorage.key(i) ?? '';
+       if (k.startsWith('sb-') && k.endsWith('-auth-token')) return true;
+diff --git a/src/online/device.ts b/src/online/device.ts
+new file mode 100644
+index 0000000..62f632f
+--- /dev/null
++++ b/src/online/device.ts
+@@ -0,0 +1,41 @@
++/**
++ * The account key kept on this device. A player who picks a name gets a Supabase
++ * account with a long random password; the password lives only here (and the
++ * recovery code restores the account anywhere else).
++ */
++export interface DeviceLogin {
++  name: string;
++  email?: string;
++  password?: string;
++  /** recovery code, kept so the player can look it up again in the account panel */
++  code?: string;
++  /** picked offline: the account is created the next time we're online */
++  pending?: boolean;
++}
++
++export const DEVICE_KEY = 'ore-to-empire/device-login';
++
++export function loadDevice(): DeviceLogin | null {
++  try {
++    const d = JSON.parse(localStorage.getItem(DEVICE_KEY) ?? 'null');
++    return d && typeof d.name === 'string' ? (d as DeviceLogin) : null;
++  } catch {
++    return null;
++  }
++}
++
++export function saveDevice(d: DeviceLogin) {
++  try {
++    localStorage.setItem(DEVICE_KEY, JSON.stringify(d));
++  } catch {
++    /* storage blocked: the player will need the recovery code next time */
++  }
++}
++
++export function clearDevice() {
++  try {
++    localStorage.removeItem(DEVICE_KEY);
++  } catch {
++    /* ignore */
++  }
++}
+diff --git a/src/online/errors.ts b/src/online/errors.ts
+new file mode 100644
+index 0000000..9fac045
+--- /dev/null
++++ b/src/online/errors.ts
+@@ -0,0 +1,5 @@
++/** error codes from the player-account function / RPCs → i18n keys */
++export function accountErrorKey(code: string): string {
++  const known = ['name_taken', 'bad_name', 'too_many', 'captcha', 'bad_code', 'locked', 'name_already_set', 'line_in_use'];
++  return known.includes(code) ? `acct.err.${code}` : 'err.network';
++}
+diff --git a/src/online/online.ts b/src/online/online.ts
+index 6cedbd2..2bd30c0 100644
+--- a/src/online/online.ts
++++ b/src/online/online.ts
+@@ -3,7 +3,9 @@ import { PACKS, type GemItemId, type PackId } from '../config/meta';
+ import { migrate } from '../core/save';
+ import type { GameState } from '../core/types';
+ import type { Game, OnlineBridge } from '../game';
++import { normaliseCode } from '../core/player';
+ import { ONLINE, lineConfigured, siteUrl } from './config';
++import { clearDevice, loadDevice, saveDevice, type DeviceLogin } from './device';
+ import { openOmiseCard } from './omise';
+ 
+ export interface SaveSummary {
+@@ -21,6 +23,29 @@ export interface OnlineUi {
+   emailSentTo: string | null;
+   conflict: { local: SaveSummary; cloud: SaveSummary } | null;
+   payment: { purchaseId: string; pack: PackId; qr: string | null; status: 'pending' | 'paid' | 'failed' | 'expired'; failure?: string } | null;
++  /** the player's unique name (null until picked) */
++  username: string | null;
++  /**
++   * The step shown before play:
++   *  name     — pick a name (creates the account)
++   *  code     — show the new recovery code once
++   *  recover  — "I already have an account": name + recovery code, or email/Google/LINE
++   *  set-name — signed in some other way, but no name yet
++   */
++  onboarding: null | 'name' | 'code' | 'recover' | 'set-name';
++  /** i18n key explaining why the onboarding step is showing */
++  onboardingNote: string | null;
++  /** name to pre-fill in the recover form */
++  recoverName: string;
++  /** a recovery code to show (once after creating, or after asking for a new one) */
++  newCode: string | null;
++  /** "confirm your email" link sent while adding an email to the account */
++  linkSentTo: string | null;
++}
++
++/** does this account still use the generated login only (no real email)? */
++function isDeviceEmail(email: string | undefined): boolean {
++  return !!email && /^p-[0-9a-f-]{36}@/.test(email);
+ }
+ 
+ const ERRORS: Record<string, string> = {
+@@ -54,7 +79,20 @@ const randomId = () => Array.from(crypto.getRandomValues(new Uint8Array(16)), (b
+  * gems and Omise purchases. Created only when the env vars are configured.
+  */
+ export class Online implements OnlineBridge {
+-  ui: OnlineUi = { user: null, ready: false, lastCloudSave: null, emailSentTo: null, conflict: null, payment: null };
++  ui: OnlineUi = {
++    user: null,
++    ready: false,
++    lastCloudSave: null,
++    emailSentTo: null,
++    conflict: null,
++    payment: null,
++    username: null,
++    onboarding: null,
++    onboardingNote: null,
++    recoverName: '',
++    newCode: null,
++    linkSentTo: null,
++  };
+   private user: User | null = null;
+   private saving = false;
+   private pendingCloud: { state: GameState; serverNow: number; savedAt: number } | null = null;
+@@ -89,7 +127,7 @@ export class Online implements OnlineBridge {
+     this.ui.user = u
+       ? {
+           id: u.id,
+-          email: u.email ?? '',
++          email: isDeviceEmail(u.email) ? '' : (u.email ?? ''),
+           name: (u.user_metadata?.full_name as string) ?? (u.user_metadata?.name as string) ?? u.email ?? '',
+           provider: (u.user_metadata?.provider as string) ?? (u.app_metadata?.provider as string) ?? 'email',
+         }
+@@ -107,12 +145,22 @@ export class Online implements OnlineBridge {
+       const u = session?.user ?? null;
+       const changedUser = (u?.id ?? null) !== (this.user?.id ?? null);
+       this.setUser(u);
+-      if (changedUser && u) void this.afterSignIn();
++      // outside the callback: supabase-js holds a lock while notifying
++      if (changedUser && u) window.setTimeout(() => void this.afterSignIn(), 0);
+       this.changed();
+     });
+ 
+     if (this.user) await this.afterSignIn();
+-    else this.game.applyDeferredCatchUp();
++    else {
++      const device = loadDevice();
++      if (device?.email && device.password) {
++        await this.deviceSignIn(device); // signed in → afterSignIn runs from the auth event
++      } else {
++        this.game.applyDeferredCatchUp();
++        if (device?.pending) void this.createPending(device);
++        else this.showOnboarding('name');
++      }
++    }
+ 
+     this.resumePaymentFromUrl();
+     window.setInterval(() => void this.cloudSave(), 30_000);
+@@ -128,7 +176,7 @@ export class Online implements OnlineBridge {
+    * offline progress (a player can't fast-forward by changing the device clock).
+    */
+   private async afterSignIn() {
+-    await this.refreshProfile();
++    await this.refreshProfile(true);
+     const { data, error } = await this.sb.rpc('load_game');
+     if (error) {
+       this.game.applyDeferredCatchUp();
+@@ -171,6 +219,7 @@ export class Online implements OnlineBridge {
+ 
+   private useCloud(cloud: GameState, awaySeconds: number) {
+     cloud.settings = { ...this.game.state.settings, ...cloud.settings };
++    if (this.ui.username) cloud.player = { name: this.ui.username };
+     cloud.gems = this.game.state.gems; // server balance, already fetched
+     cloud.boostUntil = Math.max(cloud.boostUntil, this.game.state.boostUntil);
+     this.game.replaceState(cloud, awaySeconds);
+@@ -190,12 +239,21 @@ export class Online implements OnlineBridge {
+ 
+   // ------------------------------------------------------------------ profile, saves
+ 
+-  async refreshProfile() {
++  async refreshProfile(checkName = false) {
+     if (!this.user) return;
+-    const { data } = await this.sb.from('profiles').select('gems, boost_until').eq('id', this.user.id).single();
++    const { data } = await this.sb.from('profiles').select('gems, boost_until, username').eq('id', this.user.id).single();
+     if (data) {
+       this.game.state.gems = data.gems;
+       if (data.boost_until) this.game.state.boostUntil = Math.max(this.game.state.boostUntil, Date.parse(data.boost_until));
++      this.ui.username = data.username ?? null;
++      if (data.username) {
++        if (this.game.state.player?.name !== data.username) this.game.setPlayerName(data.username);
++        if (this.ui.onboarding === 'set-name' || this.ui.onboarding === 'name' || this.ui.onboarding === 'recover') this.showOnboarding(null);
++      } else if (checkName) {
++        // signed in with email / Google / LINE before names existed (or before picking one)
++        this.ui.recoverName = this.game.state.player?.name ?? '';
++        this.showOnboarding('set-name');
++      }
+       this.changed();
+     }
+   }
+@@ -216,6 +274,153 @@ export class Online implements OnlineBridge {
+     void this.cloudSave(true);
+   }
+ 
++  // ------------------------------------------------------------------ player accounts (name + device key)
++
++  showOnboarding(step: OnlineUi['onboarding'], note: string | null = null) {
++    this.ui.onboarding = step;
++    this.ui.onboardingNote = note;
++    this.changed();
++  }
++
++  /** call an edge function; returns its JSON, or the error code from its body ('network' if none) */
++  private async fn<T>(name: string, body: Record<string, unknown>): Promise<{ data: T; error: null } | { data: null; error: string }> {
++    const { data, error } = await this.sb.functions.invoke(name, { body });
++    if (!error) return { data: data as T, error: null };
++    let code = 'network';
++    try {
++      const ctx = (error as { context?: Response }).context;
++      if (ctx && typeof ctx.json === 'function') code = ((await ctx.json()) as { error?: string })?.error ?? code;
++    } catch {
++      /* not JSON */
++    }
++    return { data: null, error: code };
++  }
++
++  /** true / false, or null when we can't tell (offline) */
++  async nameAvailable(name: string): Promise<boolean | null> {
++    const { data, error } = await this.sb.rpc('username_available', { p_name: name.trim() });
++    return error ? null : !!data;
++  }
++
++  /**
++   * Creates the player's account: the server generates a password (kept on this
++   * device) and a recovery code (shown once). Returns an error code or null.
++   */
++  async createAccount(rawName: string, captcha?: string): Promise<string | null> {
++    const name = rawName.trim();
++    const r = await this.fn<{ email: string; password: string; code: string }>('player-account', { action: 'create', name, captcha });
++    if (r.error !== null) return r.error;
++    const { email, password, code } = r.data;
++    saveDevice({ name, email, password, code });
++    this.game.setPlayerName(name);
++    this.ui.username = name;
++    this.ui.newCode = code;
++    this.showOnboarding('code');
++    const { error } = await this.sb.auth.signInWithPassword({ email, password });
++    if (error) this.game.toast(this.game.t('err.network'), 'error'); // the key is saved: next start signs in
++    return null;
++  }
++
++  /** no connection when picking a name: play now, create the account later */
++  playOfflineAs(rawName: string) {
++    const name = rawName.trim();
++    saveDevice({ name, pending: true });
++    this.game.setPlayerName(name);
++    this.showOnboarding(null);
++  }
++
++  private async createPending(d: DeviceLogin) {
++    const err = await this.createAccount(d.name);
++    if (err === 'name_taken' || err === 'bad_name') {
++      this.ui.recoverName = d.name;
++      this.showOnboarding('name', 'acct.takenNow');
++    }
++    // other errors (still offline…): keep the pending name and try next time
++  }
++
++  private async deviceSignIn(d: DeviceLogin) {
++    const { error } = await this.sb.auth.signInWithPassword({ email: d.email!, password: d.password! });
++    if (!error) return;
++    this.game.applyDeferredCatchUp();
++    if (error.status === 400) {
++      // the key was replaced (account recovered on another device)
++      this.ui.recoverName = d.name;
++      this.showOnboarding('recover', 'acct.keyReplaced');
++    } else {
++      this.game.toast(this.game.t('err.network'), 'error');
++    }
++  }
++
++  /** restore an account on this device with its name + recovery code */
++  async recover(rawName: string, rawCode: string): Promise<string | null> {
++    const name = rawName.trim();
++    const code = normaliseCode(rawCode);
++    if (!code) return 'bad_code';
++    const r = await this.fn<{ email: string; password: string }>('player-account', { action: 'recover', name, code });
++    if (r.error !== null) return r.error;
++    saveDevice({ name, email: r.data.email, password: r.data.password, code });
++    const { error } = await this.sb.auth.signInWithPassword({ email: r.data.email, password: r.data.password });
++    if (error) return 'network';
++    this.showOnboarding(null);
++    return null;
++  }
++
++  /** name for an account that signed in with email / Google / LINE */
++  async setUsername(rawName: string): Promise<string | null> {
++    const name = rawName.trim();
++    const { error } = await this.sb.rpc('set_username', { p_name: name });
++    if (error) {
++      for (const c of ['name_taken', 'bad_name', 'name_already_set']) if (error.message.includes(c)) return c;
++      return 'network';
++    }
++    this.ui.username = name;
++    this.game.setPlayerName(name);
++    this.showOnboarding(null);
++    await this.cloudSave(true);
++    return null;
++  }
++
++  /** replaces the recovery code (the old one stops working) */
++  async newRecoveryCode(): Promise<string | null> {
++    const r = await this.fn<{ code: string }>('player-account', { action: 'new-code' });
++    if (r.error !== null) return r.error;
++    const d = loadDevice();
++    if (d && d.name.toLowerCase() === (this.ui.username ?? '').toLowerCase()) saveDevice({ ...d, code: r.data.code });
++    this.ui.newCode = r.data.code;
++    this.showOnboarding('code');
++    return null;
++  }
++
++  /** recovery code kept on this device (for the signed-in player) */
++  deviceCode(): string | null {
++    const d = loadDevice();
++    return d?.code && d.name.toLowerCase() === (this.ui.username ?? '').toLowerCase() ? d.code : null;
++  }
++
++  savedCode() {
++    this.ui.newCode = null;
++    this.showOnboarding(null);
++  }
++
++  // backup sign-ins added to the current account
++
++  async linkEmail(email: string): Promise<string | null> {
++    const { error } = await this.sb.auth.updateUser({ email }, { emailRedirectTo: siteUrl() });
++    if (error) return error.message;
++    this.ui.linkSentTo = email;
++    this.changed();
++    return null;
++  }
++
++  async linkGoogle() {
++    const { error } = await this.sb.auth.linkIdentity({ provider: 'google', options: { redirectTo: siteUrl() } });
++    if (error) this.game.toast(this.game.t('err.signInFailed'), 'error');
++  }
++
++  linkedProviders(): string[] {
++    return (this.user?.identities ?? []).map((i) => i.provider).filter((p) => p !== 'email' || !!this.ui.user?.email);
++  }
++
+   // ------------------------------------------------------------------ auth
+ 
+   async signInEmail(email: string): Promise<string | null> {
+@@ -230,9 +435,10 @@ export class Online implements OnlineBridge {
+     await this.sb.auth.signInWithOAuth({ provider: 'google', options: { redirectTo: siteUrl() } });
+   }
+ 
+-  signInLine() {
++  /** LINE sign-in, or (mode 'link') adding LINE to the signed-in account */
++  signInLine(mode: 'signin' | 'link' = 'signin') {
+     if (!lineConfigured) return;
+-    const state = 'line.' + randomId();
++    const state = `line.${mode}.` + randomId();
+     const nonce = randomId();
+     sessionStorage.setItem('ote.line_state', JSON.stringify({ state, nonce }));
+     const redirect = new URL('line-callback.html', siteUrl()).href;
+@@ -264,22 +470,32 @@ export class Online implements OnlineBridge {
+       this.game.toast(this.game.t('err.signInFailed'), 'error');
+       return;
+     }
+-    const { data, error } = await this.sb.functions.invoke('line-auth', {
+-      body: { code: cb.code, redirect_uri: new URL('line-callback.html', siteUrl()).href, nonce: saved.nonce },
++    const r = await this.fn<{ token_hash?: string; linked?: boolean }>('line-auth', {
++      code: cb.code,
++      redirect_uri: new URL('line-callback.html', siteUrl()).href,
++      nonce: saved.nonce,
+     });
+-    if (error || !data?.token_hash) {
+-      this.game.toast(this.game.t('err.signInFailed'), 'error');
++    if (r.data?.linked) {
++      this.game.toast(this.game.t('acct.lineLinked'), 'success');
++      return;
++    }
++    if (r.error !== null || !r.data.token_hash) {
++      this.game.toast(this.game.t(r.error === 'line_in_use' ? 'acct.err.line_in_use' : 'err.signInFailed'), 'error');
+       return;
+     }
+-    await this.sb.auth.verifyOtp({ token_hash: data.token_hash, type: 'magiclink' });
++    const data = r.data;
++    await this.sb.auth.verifyOtp({ token_hash: data.token_hash!, type: 'magiclink' });
+   }
+ 
++  /** signs out and forgets this device's key (the recovery code brings it back) */
+   async signOut() {
+     await this.cloudSave(true);
+     await this.sb.auth.signOut();
++    clearDevice();
+     this.setUser(null);
++    this.ui.username = null;
+     this.game.state.gems = 0; // gems belong to the account
+-    this.changed();
++    this.showOnboarding('name');
+   }
+ 
+   // ------------------------------------------------------------------ gems (OnlineBridge)
+diff --git a/src/online/turnstile.ts b/src/online/turnstile.ts
+new file mode 100644
+index 0000000..06a2380
+--- /dev/null
++++ b/src/online/turnstile.ts
+@@ -0,0 +1,41 @@
++/** Cloudflare Turnstile (optional bot check when creating accounts). */
++interface TurnstileApi {
++  render(el: HTMLElement, opts: { sitekey: string; callback: (token: string) => void; 'expired-callback'?: () => void; theme?: string }): string;
++  remove(id: string): void;
++}
++
++let loading: Promise<TurnstileApi> | null = null;
++
++function load(): Promise<TurnstileApi> {
++  const w = window as unknown as { turnstile?: TurnstileApi };
++  if (w.turnstile) return Promise.resolve(w.turnstile);
++  loading ??= new Promise((resolve, reject) => {
++    const s = document.createElement('script');
++    s.src = 'https://challenges.cloudflare.com/turnstile/v0/api.js?render=explicit';
++    s.async = true;
++    s.onload = () => (w.turnstile ? resolve(w.turnstile) : reject(new Error('turnstile')));
++    s.onerror = () => {
++      loading = null;
++      reject(new Error('turnstile'));
++    };
++    document.head.appendChild(s);
++  });
++  return loading;
++}
++
++/** renders the widget into `el`; returns a cleanup function */
++export function mountTurnstile(el: HTMLElement, siteKey: string, onToken: (token: string | null) => void): () => void {
++  let id: string | null = null;
++  let gone = false;
++  load()
++    .then((api) => {
++      if (gone) return;
++      id = api.render(el, { sitekey: siteKey, theme: 'dark', callback: (t) => onToken(t), 'expired-callback': () => onToken(null) });
++    })
++    .catch(() => onToken(null));
++  return () => {
++    gone = true;
++    const w = window as unknown as { turnstile?: TurnstileApi };
++    if (id && w.turnstile) w.turnstile.remove(id);
++  };
++}
+diff --git a/src/ui/App.tsx b/src/ui/App.tsx
+index 5029dc9..3252d32 100644
+--- a/src/ui/App.tsx
++++ b/src/ui/App.tsx
+@@ -11,6 +11,7 @@ import { ContractsPanel, DailyPanel, FleetPanel, MarketsPanel, MenuSheet, PlotSh
+ import { ShopPanel } from './ShopPanel';
+ import { TileSheet } from './TileSheet';
+ import { AccountPanel, ConflictModal, PaymentModal } from './OnlinePanels';
++import { Onboarding } from './Onboarding';
+ 
+ export function App() {
+   const [game] = useState(() => new Game(undefined, { deferCatchUp: hasStoredSession() }));
+@@ -82,6 +83,7 @@ export function App() {
+         <PaymentModal />
+         <ConflictModal />
+         <OfflineModal />
++        <Onboarding />
+       </div>
+     </GameContext.Provider>
+   );
+diff --git a/src/ui/Onboarding.tsx b/src/ui/Onboarding.tsx
+new file mode 100644
+index 0000000..bde42df
+--- /dev/null
++++ b/src/ui/Onboarding.tsx
+@@ -0,0 +1,368 @@
++import { useEffect, useRef, useState } from 'react';
++import { NAME_MAX, nameProblem } from '../core/player';
++import { lineConfigured, onlineConfigured, ONLINE } from '../online/config';
++import { accountErrorKey } from '../online/errors';
++import type { Online } from '../online/online';
++import { mountTurnstile } from '../online/turnstile';
++import { useGame, useT } from './hooks';
++
++function useOnline(): Online | null {
++  const game = useGame();
++  return (game.online as Online | null) ?? null;
++}
++
++/** The step before play: pick a name (or restore an account). */
++export function Onboarding() {
++  const game = useGame();
++  const online = useOnline();
++  if (!onlineConfigured) return game.state.player ? null : <LocalName />;
++  const step = online?.ui.onboarding;
++  if (!online || !step) return null;
++  return (
++    <div className="modal-backdrop onboarding-backdrop">
++      <div className="modal onboarding" role="dialog" aria-modal="true">
++        {step === 'name' && <CreateName online={online} />}
++        {step === 'set-name' && <SetName online={online} />}
++        {step === 'code' && <ShowCode online={online} />}
++        {step === 'recover' && <Recover online={online} />}
++      </div>
++    </div>
++  );
++}
++
++function Brand() {
++  return (
++    <div className="ob-brand">
++      <span className="ob-logo" aria-hidden>
++        ◆
++      </span>
++      <span>Ore to Empire</span>
++    </div>
++  );
++}
++
++type Check = 'idle' | 'checking' | 'free' | 'taken' | 'offline';
++
++/** name field with rules + (online) a live "is it free?" check */
++function NameField({
++  value,
++  onChange,
++  online,
++  check,
++  setCheck,
++  autoFocus = true,
++}: {
++  value: string;
++  onChange: (v: string) => void;
++  online: Online | null;
++  check: Check;
++  setCheck: (c: Check) => void;
++  autoFocus?: boolean;
++}) {
++  const t = useT();
++  const problem = value.trim() ? nameProblem(value) : null;
++  const seq = useRef(0);
++
++  useEffect(() => {
++    if (!online || !value.trim() || nameProblem(value)) {
++      setCheck('idle');
++      return;
++    }
++    const my = ++seq.current;
++    setCheck('checking');
++    const timer = window.setTimeout(async () => {
++      const free = await online.nameAvailable(value);
++      if (my !== seq.current) return;
++      setCheck(free === null ? 'offline' : free ? 'free' : 'taken');
++    }, 350);
++    return () => window.clearTimeout(timer);
++    // eslint-disable-next-line react-hooks/exhaustive-deps
++  }, [value, online]);
++
++  let hint: { cls: string; text: string } = { cls: 'dim', text: t('acct.nameRules') };
++  if (problem) hint = { cls: 'bad', text: t(`acct.name.${problem}`) };
++  else if (check === 'checking') hint = { cls: 'dim', text: t('acct.checking') };
++  else if (check === 'free') hint = { cls: 'good', text: t('acct.nameFree') };
++  else if (check === 'taken') hint = { cls: 'bad', text: t('acct.err.name_taken') };
++
++  return (
++    <div className="ob-field">
++      <label htmlFor="ob-name" className="small dim">
++        {t('acct.yourName')}
++      </label>
++      <input
++        id="ob-name"
++        className="ob-input"
++        value={value}
++        maxLength={NAME_MAX + 4}
++        autoFocus={autoFocus}
++        autoComplete="nickname"
++        autoCapitalize="off"
++        spellCheck={false}
++        placeholder={t('acct.namePlaceholder')}
++        onChange={(e) => onChange(e.target.value)}
++      />
++      <p className={`small ${hint.cls}`} aria-live="polite">
++        {hint.text}
++      </p>
++    </div>
++  );
++}
++
++function CreateName({ online }: { online: Online }) {
++  const t = useT();
++  const [name, setName] = useState(online.ui.recoverName);
++  const [check, setCheck] = useState<Check>('idle');
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++  const [offline, setOffline] = useState(false);
++  const [captcha, setCaptcha] = useState<string | null>(null);
++  const [captchaKey, setCaptchaKey] = useState(0);
++  const captchaEl = useRef<HTMLDivElement>(null);
++  const needCaptcha = !!ONLINE.turnstileSiteKey;
++
++  useEffect(() => {
++    if (!needCaptcha || !captchaEl.current) return;
++    return mountTurnstile(captchaEl.current, ONLINE.turnstileSiteKey, setCaptcha);
++  }, [needCaptcha, captchaKey]);
++
++  const ok = !nameProblem(name) && check !== 'taken' && check !== 'checking' && (!needCaptcha || !!captcha);
++
++  return (
++    <form
++      className="ob-body"
++      onSubmit={async (e) => {
++        e.preventDefault();
++        if (!ok || busy) return;
++        setBusy(true);
++        setError(null);
++        const err = await online.createAccount(name, captcha ?? undefined);
++        setBusy(false);
++        if (err === 'network') setOffline(true);
++        if (err) {
++          setError(accountErrorKey(err));
++          if (err === 'name_taken') setCheck('taken');
++          if (needCaptcha) {
++            setCaptcha(null);
++            setCaptchaKey((k) => k + 1); // tokens are single-use
++          }
++        }
++      }}
++    >
++      <Brand />
++      <h2>{t('acct.welcome')}</h2>
++      {online.ui.onboardingNote && <p className="small warn-note">{t(online.ui.onboardingNote)}</p>}
++      <p className="small dim">{t('acct.pickName')}</p>
++      <NameField value={name} onChange={setName} online={online} check={check} setCheck={setCheck} />
++      {needCaptcha && <div className="ob-captcha" ref={captchaEl} key={captchaKey} />}
++      {error && <p className="bad small">{t(error)}</p>}
++      <button className="btn primary big full" type="submit" disabled={!ok || busy}>
++        {busy ? t('acct.creating') : t('acct.start')}
++      </button>
++      {offline && (
++        <button type="button" className="btn ghost full" disabled={!!nameProblem(name)} onClick={() => online.playOfflineAs(name)}>
++          {t('acct.playOffline')}
++        </button>
++      )}
++      <p className="small dim ob-note">{t('acct.autoLogin')}</p>
++      <button type="button" className="link-btn" onClick={() => online.showOnboarding('recover')}>
++        {t('acct.haveAccount')}
++      </button>
++    </form>
++  );
++}
++
++function SetName({ online }: { online: Online }) {
++  const t = useT();
++  const [name, setName] = useState(online.ui.recoverName);
++  const [check, setCheck] = useState<Check>('idle');
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++  const ok = !nameProblem(name) && check !== 'taken' && check !== 'checking';
++  return (
++    <form
++      className="ob-body"
++      onSubmit={async (e) => {
++        e.preventDefault();
++        if (!ok || busy) return;
++        setBusy(true);
++        const err = await online.setUsername(name);
++        setBusy(false);
++        setError(err ? accountErrorKey(err) : null);
++      }}
++    >
++      <Brand />
++      <h2>{t('acct.setNameTitle')}</h2>
++      <p className="small dim">{t('acct.setNameBody')}</p>
++      <NameField value={name} onChange={setName} online={online} check={check} setCheck={setCheck} />
++      {error && <p className="bad small">{t(error)}</p>}
++      <button className="btn primary big full" type="submit" disabled={!ok || busy}>
++        {t('acct.confirmName')}
++      </button>
++    </form>
++  );
++}
++
++export function CopyButton({ text, label }: { text: string; label?: string }) {
++  const t = useT();
++  const [done, setDone] = useState(false);
++  return (
++    <button
++      type="button"
++      className="btn small"
++      onClick={async () => {
++        try {
++          await navigator.clipboard.writeText(text);
++          setDone(true);
++          window.setTimeout(() => setDone(false), 1500);
++        } catch {
++          /* clipboard blocked: the code is selectable */
++        }
++      }}
++    >
++      {done ? t('acct.copied') : (label ?? t('acct.copy'))}
++    </button>
++  );
++}
++
++function ShowCode({ online }: { online: Online }) {
++  const t = useT();
++  const code = online.ui.newCode ?? '';
++  const [ack, setAck] = useState(false);
++  return (
++    <div className="ob-body">
++      <Brand />
++      <h2>{t('acct.codeTitle', { name: online.ui.username ?? '' })}</h2>
++      <p className="small dim">{t('acct.codeBody')}</p>
++      <div className="ob-code mono" data-testid="recovery-code">
++        {code}
++      </div>
++      <div className="row-center">
++        <CopyButton text={code} />
++      </div>
++      <ul className="small dim ob-list">
++        <li>{t('acct.codeWhy1')}</li>
++        <li>{t('acct.codeWhy2')}</li>
++      </ul>
++      <label className="ob-check small">
++        <input type="checkbox" checked={ack} onChange={(e) => setAck(e.target.checked)} />
++        {t('acct.codeSaved')}
++      </label>
++      <button className="btn primary big full" disabled={!ack} onClick={() => online.savedCode()}>
++        {t('acct.letsPlay')}
++      </button>
++    </div>
++  );
++}
++
++function Recover({ online }: { online: Online }) {
++  const t = useT();
++  const [name, setName] = useState(online.ui.recoverName);
++  const [code, setCode] = useState('');
++  const [busy, setBusy] = useState(false);
++  const [error, setError] = useState<string | null>(null);
++  const [email, setEmail] = useState('');
++  return (
++    <div className="ob-body">
++      <Brand />
++      <h2>{t('acct.recoverTitle')}</h2>
++      {online.ui.onboardingNote && <p className="small warn-note">{t(online.ui.onboardingNote)}</p>}
++      <form
++        className="ob-form"
++        onSubmit={async (e) => {
++          e.preventDefault();
++          if (busy) return;
++          setBusy(true);
++          setError(null);
++          const err = await online.recover(name, code);
++          setBusy(false);
++          if (err) setError(accountErrorKey(err));
++        }}
++      >
++        <label htmlFor="rc-name" className="small dim">
++          {t('acct.yourName')}
++        </label>
++        <input id="rc-name" className="ob-input" value={name} autoComplete="username" autoCapitalize="off" spellCheck={false} onChange={(e) => setName(e.target.value)} />
++        <label htmlFor="rc-code" className="small dim">
++          {t('acct.recoveryCode')}
++        </label>
++        <input
++          id="rc-code"
++          className="ob-input mono"
++          value={code}
++          placeholder="ORE-XXXX-XXXX-XXXX-XXXX"
++          autoCapitalize="characters"
++          autoComplete="off"
++          spellCheck={false}
++          onChange={(e) => setCode(e.target.value)}
++        />
++        {error && <p className="bad small">{t(error)}</p>}
++        <button className="btn primary big full" type="submit" disabled={busy || !name.trim() || !code.trim()}>
++          {busy ? t('acct.checking') : t('acct.restore')}
++        </button>
++      </form>
++
++      <div className="divider small dim">{t('acct.orBackup')}</div>
++      {online.ui.emailSentTo ? (
++        <p className="good small">{t('ui.emailSent', { email: online.ui.emailSentTo })}</p>
++      ) : (
++        <form
++          className="email-form"
++          onSubmit={async (e) => {
++            e.preventDefault();
++            const err = await online.signInEmail(email.trim());
++            if (err) setError(err);
++          }}
++        >
++          <div className="row">
++            <input type="email" required autoComplete="email" value={email} onChange={(e) => setEmail(e.target.value)} placeholder="you@example.com" aria-label={t('ui.email')} />
++            <button className="btn" type="submit">
++              {t('ui.sendLink')}
++            </button>
++          </div>
++        </form>
++      )}
++      <button className="btn full social google" onClick={() => void online.signInGoogle()}>
++        <span className="g">G</span> {t('ui.withGoogle')}
++      </button>
++      {lineConfigured && (
++        <button className="btn full social line" onClick={() => online.signInLine()}>
++          <span className="l">LINE</span> {t('ui.withLine')}
++        </button>
++      )}
++      <button type="button" className="link-btn" onClick={() => online.showOnboarding('name')}>
++        {t('acct.newPlayer')}
++      </button>
++    </div>
++  );
++}
++
++/** builds without a server (single file / artifact): the name stays on this device */
++function LocalName() {
++  const game = useGame();
++  const t = useT();
++  const [name, setName] = useState('');
++  const [check, setCheck] = useState<Check>('idle');
++  const ok = !nameProblem(name);
++  return (
++    <div className="modal-backdrop onboarding-backdrop">
++      <div className="modal onboarding" role="dialog" aria-modal="true">
++        <form
++          className="ob-body"
++          onSubmit={(e) => {
++            e.preventDefault();
++            if (ok) game.setPlayerName(name.trim());
++          }}
++        >
++          <Brand />
++          <h2>{t('acct.welcome')}</h2>
++          <p className="small dim">{t('acct.pickNameLocal')}</p>
++          <NameField value={name} onChange={setName} online={null} check={check} setCheck={setCheck} />
++          <button className="btn primary big full" type="submit" disabled={!ok}>
++            {t('acct.start')}
++          </button>
++        </form>
++      </div>
++    </div>
++  );
++}
+diff --git a/src/ui/OnlinePanels.tsx b/src/ui/OnlinePanels.tsx
+index 74394b7..f7db0b0 100644
+--- a/src/ui/OnlinePanels.tsx
++++ b/src/ui/OnlinePanels.tsx
+@@ -2,7 +2,10 @@ import { useState } from 'react';
+ import { PACKS, PACK_ORDER } from '../config/meta';
+ import { fmtMoney } from '../i18n';
+ import { lineConfigured, paymentsConfigured } from '../online/config';
++import { maskCode } from '../core/player';
++import { accountErrorKey } from '../online/errors';
+ import type { Online, SaveSummary } from '../online/online';
++import { CopyButton } from './Onboarding';
+ import { useGame, useT } from './hooks';
+ import { GemIcon } from './nav';
+ import { Modal } from './Panels';
+@@ -20,6 +23,10 @@ export function AccountPanel() {
+   const online = useOnline();
+   const [email, setEmail] = useState('');
+   const [error, setError] = useState<string | null>(null);
++  const [reveal, setReveal] = useState(false);
++  const [confirmOut, setConfirmOut] = useState(false);
++  const [confirmCode, setConfirmCode] = useState(false);
++  const [linkEmail, setLinkEmail] = useState('');
+   if (game.ui.panel !== 'account') return null;
+   const user = online?.ui.user;
+ 
+@@ -29,8 +36,8 @@ export function AccountPanel() {
+       {online && user && (
+         <>
+           <div className="kv">
+-            <span>{t('ui.signedInAs')}</span>
+-            <strong>{user.name || user.email}</strong>
++            <span>{t('acct.player')}</span>
++            <strong data-testid="player-name">{online.ui.username ?? user.name ?? user.email}</strong>
+             <span>{t('ui.gems')}</span>
+             <span className="mono">
+               <GemIcon /> {game.state.gems}
+@@ -40,10 +47,81 @@ export function AccountPanel() {
+               {online.ui.lastCloudSave ? t('ui.savedAt', { time: new Date(online.ui.lastCloudSave).toLocaleTimeString() }) : t('ui.notYet')}
+             </span>
+           </div>
+-          <p className="small dim">{t('ui.cloudHint')}</p>
+-          <button className="btn ghost full" onClick={() => void online.signOut()}>
+-            {t('ui.signOut')}
+-          </button>
++          <p className="small dim">{t('acct.cloudHint')}</p>
++
++          <div className="acct-section">
++            <div className="section-label">{t('acct.recoveryCode')}</div>
++            {online.deviceCode() ? (
++              <div className="acct-code">
++                <span className="mono">{reveal ? online.deviceCode() : maskCode(online.deviceCode()!)}</span>
++                <button className="btn small ghost" onClick={() => setReveal(!reveal)}>
++                  {reveal ? t('acct.hide') : t('acct.show')}
++                </button>
++                <CopyButton text={online.deviceCode()!} />
++              </div>
++            ) : (
++              <p className="small dim">{t('acct.noCodeHere')}</p>
++            )}
++            <button
++              className={`btn small ${confirmCode ? 'danger armed' : 'ghost'}`}
++              onClick={async () => {
++                if (!confirmCode) return setConfirmCode(true);
++                setConfirmCode(false);
++                const err = await online.newRecoveryCode();
++                if (err) setError(accountErrorKey(err));
++                else game.openPanel('none');
++              }}
++            >
++              {confirmCode ? t('acct.newCodeConfirm') : t('acct.newCode')}
++            </button>
++          </div>
++
++          <div className="acct-section">
++            <div className="section-label">{t('acct.backup')}</div>
++            <p className="small dim">{t('acct.backupWhy')}</p>
++            {user.email ? (
++              <p className="small">
++                {t('ui.email')}: <strong>{user.email}</strong>
++              </p>
++            ) : online.ui.linkSentTo ? (
++              <p className="good small">{t('acct.linkSent', { email: online.ui.linkSentTo })}</p>
++            ) : (
++              <form
++                className="email-form"
++                onSubmit={async (e) => {
++                  e.preventDefault();
++                  const err = await online.linkEmail(linkEmail.trim());
++                  if (err) setError(err);
++                }}
++              >
++                <div className="row">
++                  <input type="email" required autoComplete="email" value={linkEmail} onChange={(e) => setLinkEmail(e.target.value)} placeholder="you@example.com" aria-label={t('ui.email')} />
++                  <button className="btn" type="submit">
++                    {t('acct.addEmail')}
++                  </button>
++                </div>
++              </form>
++            )}
++            {online.linkedProviders().includes('google') ? (
++              <p className="small good">✓ Google</p>
++            ) : (
++              <button className="btn full social google" onClick={() => void online.linkGoogle()}>
++                <span className="g">G</span> {t('acct.linkGoogle')}
++              </button>
++            )}
++            {lineConfigured && (
++              <button className="btn full social line" onClick={() => online.signInLine('link')}>
++                <span className="l">LINE</span> {t('acct.linkLine')}
++              </button>
++            )}
++            {error && <p className="bad small">{t(error)}</p>}
++          </div>
++
++          <div className="acct-section">
++            <button className={`btn full ${confirmOut ? 'danger armed' : 'ghost'}`} onClick={() => (confirmOut ? void online.signOut() : setConfirmOut(true))}>
++              {confirmOut ? t('acct.signOutConfirm') : t('ui.signOut')}
++            </button>
++          </div>
+         </>
+       )}
+       {online && !user && (
+@@ -82,6 +160,9 @@ export function AccountPanel() {
+               <span className="l">LINE</span> {t('ui.withLine')}
+             </button>
+           )}
++          <button className="btn ghost full" onClick={() => online.showOnboarding('recover')}>
++            {t('acct.haveAccount')}
++          </button>
+           <p className="small dim">{t('ui.guestNote')}</p>
+         </>
+       )}
+diff --git a/src/ui/Panels.tsx b/src/ui/Panels.tsx
+index fdd5501..1702ec3 100644
+--- a/src/ui/Panels.tsx
++++ b/src/ui/Panels.tsx
+@@ -138,7 +138,9 @@ export function SettingsPanel() {
+           {confirm ? t('ui.resetConfirm') : t('ui.resetGame')}
+         </button>
+       </div>
+-      <p className="dim small version">Ore to Empire · v{__APP_VERSION__}</p>
++      <p className="dim small version">
++        {game.state.player && <>{game.state.player.name} · </>}Ore to Empire · v{__APP_VERSION__}
++      </p>
+     </Modal>
+   );
+ }
+diff --git a/src/ui/styles.css b/src/ui/styles.css
+index ce69e94..2437cb6 100644
+--- a/src/ui/styles.css
++++ b/src/ui/styles.css
+@@ -1607,3 +1607,136 @@ select:focus-visible {
+     flex: 1;
+   }
+ }
++
++/* ------------------------------------------------------------ onboarding (name before play) */
++
++.onboarding-backdrop {
++  z-index: 80;
++  background: radial-gradient(ellipse at 50% 30%, rgba(255, 138, 61, 0.12), transparent 60%), rgba(5, 7, 10, 0.86);
++  backdrop-filter: blur(3px);
++}
++.onboarding {
++  width: min(400px, 100%);
++  overflow-y: auto;
++}
++.ob-body {
++  display: flex;
++  flex-direction: column;
++  gap: 10px;
++  padding: 22px 20px 18px;
++}
++.ob-body h2 {
++  margin: 0;
++  font-size: 21px;
++}
++.ob-body p {
++  margin: 0;
++}
++.ob-brand {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  font-weight: 700;
++  letter-spacing: 0.04em;
++  text-transform: uppercase;
++  font-size: 12px;
++  color: var(--orange);
++}
++.ob-logo {
++  font-size: 16px;
++}
++.ob-field,
++.ob-form {
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++}
++.ob-input {
++  width: 100%;
++  padding: 12px;
++  font-size: 17px;
++  border-radius: 10px;
++  border: 1px solid var(--edge-2);
++  background: var(--panel-2);
++  color: var(--text);
++  user-select: text;
++  -webkit-user-select: text;
++}
++.ob-input:focus-visible {
++  outline: 2px solid var(--orange);
++  outline-offset: 1px;
++}
++.ob-code {
++  font-size: 19px;
++  letter-spacing: 0.06em;
++  text-align: center;
++  padding: 14px 8px;
++  border-radius: 10px;
++  border: 1px dashed var(--amber);
++  background: rgba(255, 201, 74, 0.07);
++  color: var(--amber);
++  user-select: all;
++  -webkit-user-select: all;
++  word-break: break-all;
++}
++.row-center {
++  display: flex;
++  justify-content: center;
++}
++.ob-list {
++  margin: 0;
++  padding-left: 18px;
++}
++.ob-check {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++}
++.ob-check input {
++  width: 18px;
++  height: 18px;
++  accent-color: var(--orange);
++}
++.ob-note {
++  text-align: center;
++}
++.ob-captcha {
++  min-height: 65px;
++  display: flex;
++  justify-content: center;
++}
++.warn-note {
++  padding: 8px 10px;
++  border-radius: 8px;
++  background: rgba(255, 201, 74, 0.1);
++  color: var(--amber);
++}
++.link-btn {
++  background: none;
++  border: none;
++  color: var(--blue);
++  font: inherit;
++  font-size: 13px;
++  padding: 6px;
++  cursor: pointer;
++  align-self: center;
++}
++.link-btn:hover {
++  text-decoration: underline;
++}
++.acct-code {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  flex-wrap: wrap;
++}
++.acct-section {
++  margin-top: 14px;
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++}
++.acct-section p,
++.acct-section form {
++  margin: 0;
++}
+diff --git a/src/vite-env.d.ts b/src/vite-env.d.ts
+index 57ca0e4..2bd57b4 100644
+--- a/src/vite-env.d.ts
++++ b/src/vite-env.d.ts
+@@ -8,6 +8,7 @@ interface ImportMetaEnv {
+   readonly VITE_SUPABASE_ANON_KEY?: string;
+   readonly VITE_OMISE_PUBLIC_KEY?: string;
+   readonly VITE_LINE_CHANNEL_ID?: string;
++  readonly VITE_TURNSTILE_SITE_KEY?: string;
+ }
+ 
+ interface ImportMeta {
+diff --git a/supabase/functions/line-auth/index.ts b/supabase/functions/line-auth/index.ts
+index 1ff200c..f118e3c 100644
+--- a/supabase/functions/line-auth/index.ts
++++ b/supabase/functions/line-auth/index.ts
+@@ -3,14 +3,16 @@
+ // POST { code, redirect_uri, nonce }
+ // 1. Exchange the LINE authorization code for tokens.
+ // 2. Verify the ID token with LINE (checks signature, audience, expiry and our nonce).
+-// 3. Find or create the Supabase user for this LINE account.
++// 3. If the request is signed in, link this LINE account to that player and stop.
++//    Otherwise find the player linked to this LINE account (identity_links), or
++//    create a new user for it.
+ // 4. Mint a one-time magic-link token; the browser exchanges it with
+ //    supabase.auth.verifyOtp({ token_hash, type: 'magiclink' }) for a normal session.
+ //
+ // Deploy with:  supabase functions deploy line-auth --no-verify-jwt
+ // Secrets: LINE_CHANNEL_ID, LINE_CHANNEL_SECRET, SITE_URL
+ 
+-import { admin, cors, json } from '../_shared/util.ts';
++import { admin, cors, json, requestUser } from '../_shared/util.ts';
+ 
+ const CHANNEL_ID = Deno.env.get('LINE_CHANNEL_ID') ?? '';
+ const CHANNEL_SECRET = Deno.env.get('LINE_CHANNEL_SECRET') ?? '';
+@@ -53,23 +55,46 @@ Deno.serve(async (req) => {
+   if (!verifyRes.ok || !claims.sub) return json({ error: 'line_verify_failed', detail: claims.error_description ?? claims.error }, 400);
+ 
+   const lineSub: string = claims.sub;
+-  const email: string = (claims.email as string | undefined)?.toLowerCase() ?? `${lineSub.toLowerCase()}@${PLACEHOLDER_DOMAIN}`;
+-
+-  // 3. find or create the user
+   const db = admin();
+-  const created = await db.auth.admin.createUser({
+-    email,
+-    email_confirm: true,
+-    user_metadata: { full_name: claims.name ?? 'LINE user', avatar_url: claims.picture ?? null, provider: 'line' },
+-    app_metadata: { line_sub: lineSub },
+-  });
+-  // "already registered" is fine — the magic link below signs into the existing account
+-  if (created.error && !/already|exists|registered/i.test(created.error.message)) {
+-    return json({ error: 'create_user_failed', detail: created.error.message }, 500);
++
++  // 3a. linking LINE to the signed-in player (account panel → "link LINE")
++  const current = await requestUser(req);
++  if (current) {
++    const { data: existing } = await db.from('identity_links').select('user_id').eq('provider', 'line').eq('subject', lineSub).maybeSingle();
++    if (existing && existing.user_id !== current.id) return json({ error: 'line_in_use' }, 409);
++    if (!existing) {
++      const ins = await db.from('identity_links').insert({ provider: 'line', subject: lineSub, user_id: current.id });
++      if (ins.error) return json({ error: 'link_failed', detail: ins.error.message }, 500);
++    }
++    return json({ linked: true });
++  }
++
++  // 3b. signing in with LINE: a linked player first
++  let email: string | undefined;
++  const { data: linked } = await db.from('identity_links').select('user_id').eq('provider', 'line').eq('subject', lineSub).maybeSingle();
++  if (linked) {
++    const u = await db.auth.admin.getUserById(linked.user_id);
++    email = u.data.user?.email ?? undefined;
++  }
++  if (!email) {
++    email = (claims.email as string | undefined)?.toLowerCase() ?? `${lineSub.toLowerCase()}@${PLACEHOLDER_DOMAIN}`;
++    const created = await db.auth.admin.createUser({
++      email,
++      email_confirm: true,
++      user_metadata: { full_name: claims.name ?? 'LINE user', avatar_url: claims.picture ?? null, provider: 'line' },
++      app_metadata: { line_sub: lineSub },
++    });
++    // "already registered" is fine — the magic link below signs into the existing account
++    if (created.error && !/already|exists|registered/i.test(created.error.message)) {
++      return json({ error: 'create_user_failed', detail: created.error.message }, 500);
++    }
+   }
+ 
+   // 4. one-time token for the browser
+   const link = await db.auth.admin.generateLink({ type: 'magiclink', email });
+   if (link.error || !link.data.properties?.hashed_token) return json({ error: 'link_failed', detail: link.error?.message }, 500);
++  if (!linked && link.data.user) {
++    await db.from('identity_links').upsert({ provider: 'line', subject: lineSub, user_id: link.data.user.id }, { onConflict: 'provider,subject', ignoreDuplicates: true });
++  }
+   return json({ token_hash: link.data.properties.hashed_token });
+ });
+diff --git a/supabase/functions/player-account/index.ts b/supabase/functions/player-account/index.ts
+new file mode 100644
+index 0000000..32538c6
+--- /dev/null
++++ b/supabase/functions/player-account/index.ts
+@@ -0,0 +1,120 @@
++// Device accounts: a player name + a random password kept on the device + a recovery code.
++//
++// POST { action: 'create', name, captcha? }
++//   → { email, password, code }   new account; the client signs in with email+password
++//                                  and keeps both on the device. `code` is shown once.
++// POST { action: 'recover', name, code }
++//   → { email, password }          correct name + recovery code: issues a NEW device password
++// POST { action: 'new-code' }      (signed in) → { code }   replaces the recovery code
++//
++// Deploy with:  supabase functions deploy player-account --no-verify-jwt
++// Secrets:      PLAYER_EMAIL_DOMAIN (optional), TURNSTILE_SECRET (optional, enables captcha)
++
++import { admin, cors, json, requestUser } from '../_shared/util.ts';
++
++// Account emails are never mailed; they only give Supabase a unique login.
++const EMAIL_DOMAIN = Deno.env.get('PLAYER_EMAIL_DOMAIN') ?? 'players.ore-to-empire.local';
++const TURNSTILE_SECRET = Deno.env.get('TURNSTILE_SECRET');
++
++const NAME_RE = /^[A-Za-z0-9_ก-๙]{3,16}$/;
++const CODE_ALPHABET = '23456789ABCDEFGHJKLMNPQRSTUVWXYZ'; // no 0/O, 1/I
++
++function randomCode(): string {
++  // 16 symbols × 5 bits = 80 bits, shown as ORE-XXXX-XXXX-XXXX-XXXX
++  const bytes = crypto.getRandomValues(new Uint8Array(16));
++  const chars = Array.from(bytes, (b) => CODE_ALPHABET[b % 32]).join('');
++  return `ORE-${chars.slice(0, 4)}-${chars.slice(4, 8)}-${chars.slice(8, 12)}-${chars.slice(12, 16)}`;
++}
++
++function randomPassword(): string {
++  const bytes = crypto.getRandomValues(new Uint8Array(32));
++  return btoa(String.fromCharCode(...bytes)).replace(/[+/=]/g, (c) => ({ '+': '-', '/': '_', '=': '' })[c]!);
++}
++
++function normaliseCode(code: string): string {
++  const raw = code.toUpperCase().replace(/[^A-Z0-9]/g, '').replace(/^ORE/, '');
++  return raw.length === 16 ? `ORE-${raw.slice(0, 4)}-${raw.slice(4, 8)}-${raw.slice(8, 12)}-${raw.slice(12, 16)}` : code.toUpperCase();
++}
++
++async function captchaOk(token: string | undefined, ip: string): Promise<boolean> {
++  if (!TURNSTILE_SECRET) return true; // captcha not configured
++  if (!token) return false;
++  const res = await fetch('https://challenges.cloudflare.com/turnstile/v0/siteverify', {
++    method: 'POST',
++    body: new URLSearchParams({ secret: TURNSTILE_SECRET, response: token, remoteip: ip }),
++  });
++  const data = await res.json();
++  return data.success === true;
++}
++
++Deno.serve(async (req) => {
++  if (req.method === 'OPTIONS') return new Response('ok', { headers: cors });
++  if (req.method !== 'POST') return json({ error: 'method_not_allowed' }, 405);
++
++  let body: { action?: string; name?: string; code?: string; captcha?: string };
++  try {
++    body = await req.json();
++  } catch {
++    return json({ error: 'bad_json' }, 400);
++  }
++  const db = admin();
++  const ip = req.headers.get('x-forwarded-for')?.split(',')[0].trim() ?? 'unknown';
++
++  // ------------------------------------------------------------ create
++  if (body.action === 'create') {
++    const name = (body.name ?? '').trim();
++    if (!NAME_RE.test(name)) return json({ error: 'bad_name' }, 400);
++    if (!(await captchaOk(body.captcha, ip))) return json({ error: 'captcha' }, 400);
++    const { data: free } = await db.rpc('username_available', { p_name: name });
++    if (!free) return json({ error: 'name_taken' }, 409);
++    const { data: allowed } = await db.rpc('note_signup', { p_ip: ip });
++    if (!allowed) return json({ error: 'too_many' }, 429);
++
++    const email = `p-${crypto.randomUUID()}@${EMAIL_DOMAIN}`;
++    const password = randomPassword();
++    const code = randomCode();
++    const created = await db.auth.admin.createUser({
++      email,
++      password,
++      email_confirm: true,
++      user_metadata: { username: name, provider: 'player' },
++    });
++    if (created.error || !created.data.user) return json({ error: 'create_failed', detail: created.error?.message }, 500);
++    const uid = created.data.user.id;
++    const claimed = await db.rpc('claim_player_name', { p_user: uid, p_name: name, p_code: code });
++    if (claimed.error) {
++      // lost a race for the name: undo the account
++      await db.auth.admin.deleteUser(uid);
++      return json({ error: claimed.error.message.includes('name_taken') ? 'name_taken' : 'create_failed' }, 409);
++    }
++    return json({ email, password, code });
++  }
++
++  // ------------------------------------------------------------ recover
++  if (body.action === 'recover') {
++    const name = (body.name ?? '').trim();
++    const code = normaliseCode(body.code ?? '');
++    if (!NAME_RE.test(name) || code.length < 8) return json({ error: 'bad_code' }, 400);
++    const { data: uid, error } = await db.rpc('check_recovery', { p_name: name, p_code: code });
++    if (error) return json({ error: error.message.includes('locked') ? 'locked' : 'bad_code' }, 429);
++    if (!uid) return json({ error: 'bad_code' }, 401);
++    const user = await db.auth.admin.getUserById(uid);
++    if (user.error || !user.data.user?.email) return json({ error: 'recover_failed' }, 500);
++    const password = randomPassword(); // a fresh device password for the new device
++    const upd = await db.auth.admin.updateUserById(uid, { password });
++    if (upd.error) return json({ error: 'recover_failed' }, 500);
++    return json({ email: user.data.user.email, password });
++  }
++
++  // ------------------------------------------------------------ new-code (signed in)
++  if (body.action === 'new-code') {
++    const user = await requestUser(req);
++    if (!user) return json({ error: 'not_signed_in' }, 401);
++    const code = randomCode();
++    const r = await db.rpc('set_recovery_code', { p_user: user.id, p_code: code });
++    if (r.error) return json({ error: 'failed' }, 500);
++    return json({ code });
++  }
++
++  return json({ error: 'unknown_action' }, 400);
++});
+diff --git a/supabase/migrations/20261006020000_player_names.sql b/supabase/migrations/20261006020000_player_names.sql
+new file mode 100644
+index 0000000..c2f0319
+--- /dev/null
++++ b/supabase/migrations/20261006020000_player_names.sql
+@@ -0,0 +1,144 @@
++-- Ore to Empire v1.0.0 — player names, device accounts, recovery codes
++--
++-- Every player picks a unique name before playing. The player-account edge function
++-- creates a real Supabase user for them with a long random password that stays on the
++-- device, plus a recovery code (shown once) to restore the account on another device.
++-- Only a bcrypt hash of the recovery code is stored.
++
++create extension if not exists pgcrypto with schema extensions;
++
++alter table public.profiles add column if not exists username text;
++alter table public.profiles add column if not exists recovery_hash text;
++alter table public.profiles add column if not exists recovery_fails integer not null default 0;
++alter table public.profiles add column if not exists recovery_locked_until timestamptz;
++
++-- names are unique regardless of case ("Somchai" = "somchai")
++create unique index if not exists profiles_username_lower on public.profiles (lower(username));
++
++-- external sign-ins linked to an account (LINE today; others later)
++create table if not exists public.identity_links (
++  provider text not null,
++  subject text not null,
++  user_id uuid not null references auth.users on delete cascade,
++  created_at timestamptz not null default now(),
++  primary key (provider, subject)
++);
++alter table public.identity_links enable row level security;
++drop policy if exists "read own links" on public.identity_links;
++create policy "read own links" on public.identity_links for select using (auth.uid() = user_id);
++
++-- simple per-IP throttle for creating accounts
++create table if not exists public.signup_log (
++  id bigint generated always as identity primary key,
++  ip text not null,
++  at timestamptz not null default now()
++);
++create index if not exists signup_log_ip_at on public.signup_log (ip, at desc);
++alter table public.signup_log enable row level security; -- no policies: service role only
++
++-- ---------------------------------------------------------------- names
++
++create or replace function public.valid_username(p_name text)
++returns boolean language sql immutable as $$
++  select p_name is not null
++     and char_length(p_name) between 3 and 16
++     and p_name ~ '^[A-Za-z0-9_ก-๙]+$'
++     and lower(p_name) not in ('admin', 'administrator', 'system', 'support', 'moderator', 'staff', 'oretoempire', 'ore_to_empire')
++$$;
++
++create or replace function public.username_available(p_name text)
++returns boolean language sql stable security definer set search_path = public as $$
++  select public.valid_username(p_name)
++     and not exists (select 1 from public.profiles where lower(username) = lower(p_name))
++$$;
++
++-- for players who signed in some other way (email / Google / LINE) and have no name yet
++create or replace function public.set_username(p_name text)
++returns text language plpgsql security definer set search_path = public as $$
++begin
++  if auth.uid() is null then raise exception 'not_signed_in'; end if;
++  if not public.valid_username(p_name) then raise exception 'bad_name'; end if;
++  begin
++    update public.profiles set username = p_name where id = auth.uid() and username is null;
++  exception when unique_violation then
++    raise exception 'name_taken';
++  end;
++  if not found then raise exception 'name_already_set'; end if;
++  return p_name;
++end $$;
++
++-- ---------------------------------------------------------------- service-role helpers (edge function)
++
++-- true when this IP may create another account (max 5 per hour)
++create or replace function public.note_signup(p_ip text)
++returns boolean language plpgsql security definer set search_path = public as $$
++declare v_recent integer;
++begin
++  delete from public.signup_log where at < now() - interval '1 day';
++  select count(*) into v_recent from public.signup_log where ip = p_ip and at > now() - interval '1 hour';
++  if v_recent >= 5 then return false; end if;
++  insert into public.signup_log (ip) values (p_ip);
++  return true;
++end $$;
++
++create or replace function public.claim_player_name(p_user uuid, p_name text, p_code text)
++returns void language plpgsql security definer set search_path = public, extensions as $$
++begin
++  if not public.valid_username(p_name) then raise exception 'bad_name'; end if;
++  begin
++    update public.profiles
++       set username = p_name, recovery_hash = crypt(p_code, gen_salt('bf', 8)), recovery_fails = 0, recovery_locked_until = null
++     where id = p_user;
++  exception when unique_violation then
++    raise exception 'name_taken';
++  end;
++  if not found then raise exception 'no_profile'; end if;
++end $$;
++
++create or replace function public.set_recovery_code(p_user uuid, p_code text)
++returns void language plpgsql security definer set search_path = public, extensions as $$
++begin
++  update public.profiles set recovery_hash = crypt(p_code, gen_salt('bf', 8)), recovery_fails = 0, recovery_locked_until = null
++   where id = p_user;
++end $$;
++
++-- Checks name + recovery code. Returns the user id, or NULL when the name or code is
++-- wrong (same answer for both, so names can't be probed), or raises 'locked'.
++-- Failures return instead of raising so the failure counter is kept.
++-- 5 wrong codes lock the account's recovery for 15 minutes.
++create or replace function public.check_recovery(p_name text, p_code text)
++returns uuid language plpgsql security definer set search_path = public, extensions as $$
++declare p public.profiles;
++begin
++  select * into p from public.profiles where lower(username) = lower(p_name) for update;
++  if not found or p.recovery_hash is null then
++    perform pg_sleep(0.2); -- don't reveal which names exist by timing
++    return null;
++  end if;
++  if p.recovery_locked_until is not null and p.recovery_locked_until > now() then raise exception 'locked'; end if;
++  if crypt(upper(p_code), p.recovery_hash) <> p.recovery_hash then
++    update public.profiles
++       set recovery_fails = recovery_fails + 1,
++           recovery_locked_until = case when recovery_fails + 1 >= 5 then now() + interval '15 minutes' else null end
++     where id = p.id;
++    return null;
++  end if;
++  update public.profiles set recovery_fails = 0, recovery_locked_until = null where id = p.id;
++  return p.id;
++end $$;
++
++-- ---------------------------------------------------------------- grants
++
++revoke all on function public.note_signup(text) from public, anon, authenticated;
++revoke all on function public.claim_player_name(uuid, text, text) from public, anon, authenticated;
++revoke all on function public.set_recovery_code(uuid, text) from public, anon, authenticated;
++revoke all on function public.check_recovery(text, text) from public, anon, authenticated;
++grant execute on function public.note_signup(text) to service_role;
++grant execute on function public.claim_player_name(uuid, text, text) to service_role;
++grant execute on function public.set_recovery_code(uuid, text) to service_role;
++grant execute on function public.check_recovery(text, text) to service_role;
++
++grant execute on function public.valid_username(text) to anon, authenticated;
++grant execute on function public.username_available(text) to anon, authenticated;
++revoke all on function public.set_username(text) from public, anon;
++grant execute on function public.set_username(text) to authenticated;
+diff --git a/tests/player.test.ts b/tests/player.test.ts
+new file mode 100644
+index 0000000..87b2dba
+--- /dev/null
++++ b/tests/player.test.ts
+@@ -0,0 +1,40 @@
++import { describe, expect, it } from 'vitest';
++import { maskCode, nameProblem, normaliseCode } from '../src/core/player';
++import { newGame } from '../src/core/state';
++import { prestige } from '../src/core/prestige';
++
++describe('player names', () => {
++  it('accepts Thai, English, digits and _', () => {
++    expect(nameProblem('SteelKing')).toBeNull();
++    expect(nameProblem('เจ้าพ่อเหล็ก')).toBeNull();
++    expect(nameProblem('ore_99')).toBeNull();
++    expect(nameProblem('  abc  ')).toBeNull(); // trimmed
++  });
++  it('rejects bad names', () => {
++    expect(nameProblem('ab')).toBe('short');
++    expect(nameProblem('a'.repeat(17))).toBe('long');
++    expect(nameProblem('has space')).toBe('chars');
++    expect(nameProblem('emoji😀x')).toBe('chars');
++    expect(nameProblem('Admin')).toBe('reserved');
++  });
++});
++
++describe('recovery codes', () => {
++  it('normalises what players type', () => {
++    expect(normaliseCode('ore-abcd-efgh-jkmn-pqrs')).toBe('ORE-ABCD-EFGH-JKMN-PQRS');
++    expect(normaliseCode('ABCD EFGH JKMN PQRS')).toBe('ORE-ABCD-EFGH-JKMN-PQRS');
++    expect(normaliseCode('  ORE ABCDEFGHJKMNPQRS ')).toBe('ORE-ABCD-EFGH-JKMN-PQRS');
++    expect(normaliseCode('ORE-ABCD')).toBeNull();
++  });
++  it('masks the middle', () => {
++    expect(maskCode('ORE-ABCD-EFGH-JKMN-PQRS')).toBe('ORE-ABCD-••••-••••-PQRS');
++  });
++});
++
++describe('player name in the save', () => {
++  it('survives selling the company', () => {
++    const s = newGame(1);
++    s.player = { name: 'SteelKing' };
++    expect(prestige(s, 2).player).toEqual({ name: 'SteelKing' });
++  });
++});
