@@ -1,0 +1,508 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 3e4d31c..010208e 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -9,6 +9,18 @@
+ 
+ <!-- release-script: each "## [x.y.z]" section is copied into releases/vx.y.z/CHANGES.md -->
+ 
++## [1.3.1] - 2026-10-07
++
++### ปรับปรุง
++- **ตั้งค่าเก็บสำรองในโกดังได้ทันที ไม่ต้องรอของเข้ามาก่อน:** รายการสินค้าดึงจากสายพานขาเข้า ของที่ยังไม่มีแสดงเป็น "ยังไม่มีของ · มาจาก…" พร้อมชื่ออาคารต้นทาง
++  - สายพานที่มาจากโกดังอีกหลัง: ใช้ชนิดที่ตั้งคัดแยกไว้ หรือถ้าเป็นอัตโนมัติ จะไล่ย้อนดูของที่โกดังต้นทางมีและที่ไหลเข้าโกดังนั้น (ไล่ต่อได้หลายทอด กันวนซ้ำ)
++  - ของที่ตั้งเก็บสำรองไว้ยังแสดงในรายการแม้ของหมดแล้ว
++- **เลือกจำนวนเก็บสำรองได้ในครั้งเดียว:** กดปุ่ม "เก็บ …" แล้วเลือกจากแถบตัวเลือก (ไม่เก็บ, 10, 25, 50, 100, 200, 500, 1000, ทั้งหมด) แทนการกด −/+ ทีละขั้น
++- ตัวเลือก "สายพานนี้ส่งอะไร" ใช้รายการเดียวกัน จึงตั้งคัดแยกได้ก่อนของมาถึงเช่นกัน
++
++### เซฟ
++- ใช้เซฟเดิมได้ ไม่มีการเปลี่ยนรูปแบบเซฟ
++
+ ## [1.3.0] - 2026-10-07
+ 
+ ### เพิ่มใหม่
+diff --git a/package-lock.json b/package-lock.json
+index d726a7c..b1f93ce 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "1.3.0",
++  "version": "1.3.1",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "ore-to-empire",
+-      "version": "1.3.0",
++      "version": "1.3.1",
+       "dependencies": {
+         "@supabase/supabase-js": "^2.117.2",
+         "pixi.js": "^8.22.0",
+diff --git a/package.json b/package.json
+index 91b9a30..d792380 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "1.3.0",
++  "version": "1.3.1",
+   "scripts": {
+     "dev": "vite",
+     "build": "tsc --noEmit && vite build",
+diff --git a/src/core/actions.ts b/src/core/actions.ts
+index 333f050..6c4c0ed 100644
+--- a/src/core/actions.ts
++++ b/src/core/actions.ts
+@@ -221,20 +221,63 @@ export function setBeltFilter(state: GameState, beltId: number, item: ItemId | n
+   return ok(undefined);
+ }
+ 
+-/** steps for the warehouse "keep in stock" control; -1 = keep everything */
++/** choices for the warehouse "keep in stock" control; -1 = keep everything */
+ export const RESERVE_STEPS = [0, 10, 25, 50, 100, 200, 500, 1000, -1];
+ 
+-/** move a warehouse's reserve for one item one step up (+1) or down (-1) */
+-export function stepReserve(state: GameState, buildingId: number, item: ItemId, dir: 1 | -1): ActionResult<number> {
++/** how many of an item a warehouse keeps instead of sending on (0 = none, -1 = all) */
++export function setReserve(state: GameState, buildingId: number, item: ItemId, amount: number): ActionResult<number> {
+   const b = getBuilding(state, buildingId);
+   if (!b || b.type !== 'warehouse') return fail('err.notWarehouse');
+-  const cur = b.reserve?.[item] ?? 0;
+-  let i = RESERVE_STEPS.indexOf(cur);
+-  if (i < 0) i = RESERVE_STEPS.findIndex((v) => v > cur || v < 0); // a value from elsewhere: snap to the next step
+-  const next = RESERVE_STEPS[Math.max(0, Math.min(RESERVE_STEPS.length - 1, i + dir))];
+-  b.reserve = { ...b.reserve, [item]: next };
+-  if (!next) delete b.reserve[item];
+-  return ok(next);
++  if (!RESERVE_STEPS.includes(amount)) return fail('err.badAmount');
++  b.reserve = { ...b.reserve, [item]: amount };
++  if (!amount) delete b.reserve[item];
++  return ok(amount);
++}
++
++/**
++ * What a belt can bring in. A belt from a warehouse brings its filter item, or
++ * else whatever that warehouse holds or is itself fed (followed back up the chain).
++ */
++export function beltSupply(state: GameState, belt: Belt, seen: Set<number> = new Set()): ItemId[] {
++  const src = getBuilding(state, belt.from);
++  const dst = getBuilding(state, belt.to);
++  if (!src || !dst) return [];
++  if (src.type !== 'warehouse' || belt.filter) return beltCarries(state, belt);
++  if (seen.has(src.id)) return [];
++  seen.add(src.id);
++  const items = new Set<ItemId>((Object.keys(src.input) as ItemId[]).filter((i) => (src.input[i] ?? 0) >= 1));
++  for (const inBelt of state.belts) if (inBelt.to === src.id) for (const i of beltSupply(state, inBelt, seen)) items.add(i);
++  return [...items].filter((i) => acceptsType(dst, i));
++}
++
++export interface WarehouseLine {
++  item: ItemId;
++  have: number;
++  /** -1 = keep all */
++  keep: number;
++  /** building types whose belts bring this item */
++  from: BuildingType[];
++}
++
++/** every item a warehouse holds, keeps, or has coming in on a belt — so it can be set up before anything arrives */
++export function warehouseLines(state: GameState, b: Building): WarehouseLine[] {
++  const lines = new Map<ItemId, WarehouseLine>();
++  const line = (item: ItemId) => {
++    let l = lines.get(item);
++    if (!l) lines.set(item, (l = { item, have: Math.floor(b.input[item] ?? 0), keep: b.reserve?.[item] ?? 0, from: [] }));
++    return l;
++  };
++  for (const i of Object.keys(b.input) as ItemId[]) if ((b.input[i] ?? 0) >= 1) line(i);
++  for (const i of Object.keys(b.reserve ?? {}) as ItemId[]) line(i);
++  for (const belt of state.belts) {
++    if (belt.to !== b.id) continue;
++    const src = getBuilding(state, belt.from);
++    for (const i of beltSupply(state, belt, new Set([b.id]))) {
++      const l = line(i);
++      if (src && !l.from.includes(src.type)) l.from.push(src.type);
++    }
++  }
++  return [...lines.values()];
+ }
+ 
+ export interface LinkPlan {
+diff --git a/src/game.ts b/src/game.ts
+index 578cb65..8241430 100644
+--- a/src/game.ts
++++ b/src/game.ts
+@@ -9,7 +9,7 @@ import {
+   removeLink,
+   setBeltFilter,
+   setRecipe,
+-  stepReserve,
++  setReserve,
+   upgradeBelts,
+   upgradeBuilding,
+   type ActionResult,
+@@ -609,8 +609,8 @@ export class Game {
+     if (this.result(setBeltFilter(this.state, beltId, item))) this.structureChanged();
+   }
+ 
+-  stepReserve(buildingId: number, item: ItemId, dir: 1 | -1) {
+-    if (this.result(stepReserve(this.state, buildingId, item, dir))) this.emit();
++  setReserve(buildingId: number, item: ItemId, amount: number) {
++    if (this.result(setReserve(this.state, buildingId, item, amount))) this.emit();
+   }
+ 
+   removeBelt(id: number) {
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 6d5e04b..ee4113a 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -698,10 +698,7 @@ export const en = {
+   'notice.labIdle': 'The lab is idle — start the next research',
+   'notice.researchNextShort': 'Research',
+   'wh.stock': 'Stock · keep',
+-  'wh.less': 'Keep fewer',
+-  'wh.more': 'Keep more',
+   'wh.keepAll': 'all',
+-  'wh.keepHint': 'The number on the right stays in the warehouse; only the extra goes out on belts. Pick what each outgoing belt carries in the belt list below.',
+   'wh.sendWhat': 'What this belt carries',
+   'wh.auto': 'Auto (anything)',
+   'err.notWarehouse': 'Only warehouses can do that',
+@@ -709,6 +706,14 @@ export const en = {
+   'news.7': 'Finished research now shows a card with what it unlocked and a "Research next" button, and the lab chip at the top glows when the lab is idle.',
+   'news.8': 'Get notified in another tab when research finishes or a contract has 5 minutes left — turn it on in Settings.',
+   'news.9': 'Warehouses can sort: choose what each outgoing belt carries, and keep a stock of each item so only the extra is sent on.',
++  'wh.keepN': 'keep {n}',
++  'wh.keepNone': 'keep none',
++  'wh.keepFor': 'How many {item} to keep',
++  'wh.notYet': 'none yet · from {from}',
++  'wh.emptyHint': 'Connect a belt into the warehouse — the items it brings show up here so you can set how many to keep, even before any arrive.',
++  'wh.keepHint': 'Tap "keep" to choose how many stay in the warehouse; only the extra goes out on belts. Pick what each outgoing belt carries in the belt list below.',
++  'err.badAmount': 'Pick one of the listed amounts',
++  'news.10': 'Warehouses list what their incoming belts will bring, so you can set how many to keep before anything arrives — tap "keep" and pick an amount in one go.',
+ };
+ 
+ export type Dict = Record<keyof typeof en, string>;
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index 04bf395..33e2252 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -700,10 +700,7 @@ export const th: Dict = {
+   'notice.labIdle': 'ห้องวิจัยว่าง เริ่มหัวข้อถัดไปได้',
+   'notice.researchNextShort': 'วิจัยต่อ',
+   'wh.stock': 'สินค้าในโกดัง · เก็บสำรอง',
+-  'wh.less': 'เก็บน้อยลง',
+-  'wh.more': 'เก็บมากขึ้น',
+   'wh.keepAll': 'ทั้งหมด',
+-  'wh.keepHint': 'ตัวเลขด้านขวาคือจำนวนที่เก็บไว้ในโกดัง ส่งออกเฉพาะส่วนที่เกิน เลือกว่าสายพานขาออกแต่ละเส้นส่งอะไรได้ในรายการสายพานด้านล่าง',
+   'wh.sendWhat': 'สายพานเส้นนี้ส่งอะไร',
+   'wh.auto': 'อัตโนมัติ (ทุกอย่าง)',
+   'err.notWarehouse': 'ทำได้เฉพาะโกดัง',
+@@ -711,4 +708,12 @@ export const th: Dict = {
+   'news.7': 'งานวิจัยที่เสร็จจะขึ้นเป็นการ์ด บอกสิ่งที่ปลดล็อก พร้อมปุ่ม "วิจัยต่อ" และป้ายบนแถบด้านบนจะกระพริบเมื่อห้องวิจัยว่าง',
+   'news.8': 'แจ้งเตือนตอนเปิดแท็บอื่น เมื่อวิจัยเสร็จหรือสัญญาเหลือเวลา 5 นาที เปิดได้ในหน้าตั้งค่า',
+   'news.9': 'โกดังคัดแยกได้แล้ว: เลือกว่าสายพานแต่ละเส้นส่งสินค้าอะไร และตั้งจำนวนเก็บสำรองแต่ละชนิด ส่งออกเฉพาะส่วนที่เกิน',
++  'wh.keepN': 'เก็บ {n}',
++  'wh.keepNone': 'ไม่เก็บ',
++  'wh.keepFor': 'จำนวน{item}ที่เก็บไว้',
++  'wh.notYet': 'ยังไม่มีของ · มาจาก{from}',
++  'wh.emptyHint': 'ต่อสายพานเข้าโกดังก่อน สินค้าที่สายพานจะส่งมาจะขึ้นในรายการนี้ ตั้งจำนวนเก็บได้ทันทีโดยไม่ต้องรอของ',
++  'wh.keepHint': 'กดปุ่ม "เก็บ" เพื่อเลือกจำนวนที่เก็บไว้ในโกดัง ส่งออกเฉพาะส่วนที่เกิน เลือกว่าสายพานขาออกแต่ละเส้นส่งอะไรได้ในรายการสายพานด้านล่าง',
++  'err.badAmount': 'เลือกจำนวนจากตัวเลือกที่มี',
++  'news.10': 'โกดังแสดงสินค้าที่สายพานขาเข้าจะส่งมา ตั้งจำนวนเก็บสำรองได้ทันทีไม่ต้องรอของ กดปุ่ม "เก็บ" แล้วเลือกจำนวนได้ในครั้งเดียว',
+ };
+diff --git a/src/ui/Inspector.tsx b/src/ui/Inspector.tsx
+index dcfa099..e5d29ab 100644
+--- a/src/ui/Inspector.tsx
++++ b/src/ui/Inspector.tsx
+@@ -17,7 +17,7 @@ import { tileMult } from '../core/veins';
+ import { FUEL, acceptsType, isCrafter } from '../core/sim';
+ import { extractedItem } from '../core/zones';
+ import { OreInfo } from './TileSheet';
+-import { beltCarries, freeMoveLeft, isUpgradable, moveFee, totalInvested } from '../core/actions';
++import { RESERVE_STEPS, beltCarries, beltSupply, freeMoveLeft, isUpgradable, moveFee, totalInvested, warehouseLines } from '../core/actions';
+ import { getBuilding, invTotal } from '../core/state';
+ import { fmtClock, fmtMoney, fmtNum } from '../i18n';
+ import { useGame, useHighlight, useT } from './hooks';
+@@ -29,10 +29,12 @@ export function Inspector() {
+   const b = game.selectedBuilding();
+   const [confirm, setConfirm] = useState(false);
+   const [showRecipes, setShowRecipes] = useState(false);
++  const [keepOpen, setKeepOpen] = useState<ItemId | null>(null);
+   const linkHi = useHighlight('link-btn');
+   useEffect(() => {
+     setConfirm(false);
+     setShowRecipes(false);
++    setKeepOpen(null);
+   }, [b?.id]);
+   if (!b || game.ui.mode.kind !== 'select' || game.ui.tidy) return null;
+ 
+@@ -167,8 +169,8 @@ export function Inspector() {
+   } else if (b.type === 'warehouse') {
+     const cap = storageCapacity(b.type, b.level);
+     const total = invTotal(b.input);
+-    // everything stocked, plus items with a reserve set but none in stock right now
+-    const items = [...new Set([...(Object.keys(b.input) as ItemId[]).filter((i) => (b.input[i] ?? 0) >= 1), ...(Object.keys(b.reserve ?? {}) as ItemId[])])];
++    const lines = warehouseLines(s, b);
++    const keepLabel = (n: number) => (n < 0 ? t('wh.keepAll') : n ? t('wh.keepN', { n }) : t('wh.keepNone'));
+     body = (
+       <>
+         <div className="kv">
+@@ -178,29 +180,47 @@ export function Inspector() {
+           </span>
+         </div>
+         <div className="section-label">{t('wh.stock')}</div>
+-        {items.length === 0 ? (
+-          <p className="small dim">{t('ui.empty')}</p>
++        {lines.length === 0 ? (
++          <p className="small dim">{t('wh.emptyHint')}</p>
+         ) : (
+           <ul className="wh-stock">
+-            {items.map((i) => {
+-              const r = b.reserve?.[i] ?? 0;
+-              return (
+-                <li key={i}>
+-                  <ItemIcon item={i} size={18} />
+-                  <span className="wh-name">{t(`item.${i}`)}</span>
+-                  <span className="mono wh-have">{Math.floor(b.input[i] ?? 0)}</span>
+-                  <span className="wh-keep">
+-                    <button className="icon-btn small" disabled={r === 0} onClick={() => game.stepReserve(b.id, i, -1)} aria-label={t('wh.less')}>
+-                      −
+-                    </button>
+-                    <span className={`mono ${r ? 'warn' : 'dim'}`}>{r < 0 ? t('wh.keepAll') : r || '–'}</span>
+-                    <button className="icon-btn small" disabled={r < 0} onClick={() => game.stepReserve(b.id, i, 1)} aria-label={t('wh.more')}>
+-                      +
+-                    </button>
++            {lines.map((l) => (
++              <li key={l.item} className={l.have ? '' : 'waiting'}>
++                <div className="wh-row">
++                  <ItemIcon item={l.item} size={18} />
++                  <span className="wh-name">
++                    {t(`item.${l.item}`)}
++                    {!l.have && l.from.length > 0 && (
++                      <span className="small dim wh-from">{t('wh.notYet', { from: l.from.map((f) => t(`b.${f}`)).join(', ') })}</span>
++                    )}
+                   </span>
+-                </li>
+-              );
+-            })}
++                  <span className="mono wh-have">{l.have}</span>
++                  <button
++                    className={`btn small wh-keep-btn ${l.keep ? 'set' : ''}`}
++                    aria-expanded={keepOpen === l.item}
++                    onClick={() => setKeepOpen(keepOpen === l.item ? null : l.item)}
++                  >
++                    {keepLabel(l.keep)} ▾
++                  </button>
++                </div>
++                {keepOpen === l.item && (
++                  <div className="wh-choices" role="group" aria-label={t('wh.keepFor', { item: t(`item.${l.item}`) })}>
++                    {RESERVE_STEPS.map((n) => (
++                      <button
++                        key={n}
++                        className={`chip ${l.keep === n ? 'active' : ''}`}
++                        onClick={() => {
++                          game.setReserve(b.id, l.item, n);
++                          setKeepOpen(null);
++                        }}
++                      >
++                        {n < 0 ? t('wh.keepAll') : n || t('wh.keepNone')}
++                      </button>
++                    ))}
++                  </div>
++                )}
++              </li>
++            ))}
+           </ul>
+         )}
+         <p className="small dim">{t('wh.keepHint')}</p>
+@@ -283,7 +303,7 @@ export function Inspector() {
+       ? [
+           ...new Set<ItemId>([
+             ...(Object.keys(b.input) as ItemId[]),
+-            ...ins.flatMap((x) => beltCarries(s, x)),
++            ...ins.flatMap((x) => beltSupply(s, x, new Set([b.id]))),
+             ...(belt.filter ? [belt.filter] : []),
+           ]),
+         ].filter((i) => acceptsType(dst, i))
+diff --git a/src/ui/WhatsNew.tsx b/src/ui/WhatsNew.tsx
+index 5e8c92e..5bb7626 100644
+--- a/src/ui/WhatsNew.tsx
++++ b/src/ui/WhatsNew.tsx
+@@ -16,6 +16,7 @@ const NOTES: { key: string; version: string }[] = [
+   { key: 'news.7', version: '1.3.0' },
+   { key: 'news.8', version: '1.3.0' },
+   { key: 'news.9', version: '1.3.0' },
++  { key: 'news.10', version: '1.3.1' },
+ ];
+ 
+ function newer(a: string, b: string | undefined): boolean {
+diff --git a/src/ui/styles.css b/src/ui/styles.css
+index 4a9feca..2c17f23 100644
+--- a/src/ui/styles.css
++++ b/src/ui/styles.css
+@@ -2071,32 +2071,55 @@ select:focus-visible {
+   gap: 4px;
+ }
+ .wh-stock li {
+-  display: flex;
+-  align-items: center;
+-  gap: 8px;
+   padding: 4px 6px;
+   border-radius: 8px;
+   background: var(--panel-2);
+ }
++.wh-stock li.waiting .wh-have {
++  color: var(--dim);
++}
++.wh-row {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++}
+ .wh-name {
+   flex: 1;
+   min-width: 0;
+-  overflow: hidden;
+-  text-overflow: ellipsis;
+-  white-space: nowrap;
++  display: flex;
++  flex-direction: column;
++  line-height: 1.25;
++}
++.wh-from {
++  overflow-wrap: anywhere;
+ }
+ .wh-have {
+   min-width: 36px;
+   text-align: right;
+ }
+-.wh-keep {
++.wh-keep-btn {
++  min-height: 32px;
++  padding: 4px 10px;
++  min-width: 92px;
++}
++.wh-keep-btn.set {
++  border-color: var(--amber);
++  color: var(--amber);
++}
++.wh-choices {
+   display: flex;
+-  align-items: center;
+-  gap: 4px;
++  flex-wrap: wrap;
++  gap: 6px;
++  padding: 8px 0 4px;
+ }
+-.wh-keep .mono {
+-  min-width: 52px;
+-  text-align: center;
++.wh-choices .chip {
++  cursor: pointer;
++  min-height: 32px;
++}
++.wh-choices .chip.active {
++  border-color: var(--amber);
++  color: var(--amber);
++  background: rgba(255, 201, 74, 0.12);
+ }
+ .belt-filter {
+   max-width: 140px;
+diff --git a/tests/intro.test.ts b/tests/intro.test.ts
+index f69ee17..5d0f2ec 100644
+--- a/tests/intro.test.ts
++++ b/tests/intro.test.ts
+@@ -26,11 +26,12 @@ describe('intro popup flag', () => {
+ describe("what's new notes", () => {
+   it('shows every note newer than the version the player last saw', async () => {
+     const { notesFor } = await import('../src/ui/WhatsNew');
+-    expect(notesFor('1.1.1')).toEqual(['news.1', 'news.2', 'news.3', 'news.4', 'news.5', 'news.6', 'news.7', 'news.8', 'news.9']);
+-    expect(notesFor('1.2.0')).toEqual(['news.5', 'news.6', 'news.7', 'news.8', 'news.9']);
+-    expect(notesFor('1.2.1')).toEqual(['news.7', 'news.8', 'news.9']);
+-    expect(notesFor('1.3.0')).toEqual([]);
+-    expect(notesFor(undefined).length).toBe(9);
++    expect(notesFor('1.1.1')).toEqual(['news.1', 'news.2', 'news.3', 'news.4', 'news.5', 'news.6', 'news.7', 'news.8', 'news.9', 'news.10']);
++    expect(notesFor('1.2.0')).toEqual(['news.5', 'news.6', 'news.7', 'news.8', 'news.9', 'news.10']);
++    expect(notesFor('1.2.1')).toEqual(['news.7', 'news.8', 'news.9', 'news.10']);
++    expect(notesFor('1.3.0')).toEqual(['news.10']);
++    expect(notesFor('1.3.1')).toEqual([]);
++    expect(notesFor(undefined).length).toBe(10);
+     expect(notesFor('1.10.0')).toEqual([]); // compared as numbers, not text
+   });
+ });
+diff --git a/tests/warehouse.test.ts b/tests/warehouse.test.ts
+index 27c8e47..d2d062c 100644
+--- a/tests/warehouse.test.ts
++++ b/tests/warehouse.test.ts
+@@ -1,6 +1,6 @@
+ import { describe, expect, it } from 'vitest';
+ import { BALANCE } from '../src/config/balance';
+-import { RESERVE_STEPS, beltCarries, createLink, placeBuilding, setBeltFilter, stepReserve } from '../src/core/actions';
++import { RESERVE_STEPS, beltCarries, createLink, placeBuilding, setBeltFilter, setReserve, warehouseLines } from '../src/core/actions';
+ import { backgroundAlerts, CONTRACT_WARN_SECONDS, unlocksOf } from '../src/core/alerts';
+ import { buyPerk } from '../src/core/prestige';
+ import { startResearch } from '../src/core/research';
+@@ -96,13 +96,56 @@ describe('warehouse reserve', () => {
+     expect(w.input.iron_bar).toBe(60);
+   });
+ 
+-  it('steps through the presets and back down to nothing', () => {
++  it('is set straight to one of the presets, and 0 clears it', () => {
+     const { s, w } = sorter();
+-    const seen: number[] = [];
+-    for (let i = 0; i < RESERVE_STEPS.length + 2; i++) seen.push(stepReserve(s, w.id, 'coal', 1).ok ? (w.reserve?.coal ?? 0) : NaN);
+-    expect(seen).toEqual([...RESERVE_STEPS.slice(1), -1, -1, -1]);
+-    for (let i = 0; i < RESERVE_STEPS.length + 2; i++) stepReserve(s, w.id, 'coal', -1);
+-    expect(w.reserve?.coal).toBeUndefined();
++    for (const n of RESERVE_STEPS) {
++      expect(setReserve(s, w.id, 'coal', n).ok).toBe(true);
++      expect(w.reserve?.coal).toBe(n || undefined);
++    }
++    expect(setReserve(s, w.id, 'coal', 7)).toEqual({ ok: false, reason: 'err.badAmount' });
++  });
++});
++
++describe('warehouse item list', () => {
++  function chain() {
++    const s = newGame(11);
++    s.money = 1e6;
++    s.world.deposits = s.world.deposits.map(() => null);
++    s.world.deposits[(O + 10) * s.world.size + O + 10] = 'coal';
++    const m = placeBuilding(s, 'miner', O + 10, O + 10);
++    const w1 = placeBuilding(s, 'warehouse', O + 14, O + 10);
++    const w2 = placeBuilding(s, 'warehouse', O + 18, O + 10);
++    if (!m.ok || !w1.ok || !w2.ok) throw new Error('place');
++    createLink(s, m.value.id, w1.value.id);
++    createLink(s, w1.value.id, w2.value.id);
++    return { s, w1: w1.value, w2: w2.value };
++  }
++
++  it('lists what incoming belts will bring before anything arrives', () => {
++    const { s, w1 } = chain();
++    expect(warehouseLines(s, w1)).toEqual([{ item: 'coal', have: 0, keep: 0, from: ['miner'] }]);
++  });
++
++  it('follows a warehouse belt back to what feeds that warehouse', () => {
++    const { s, w1, w2 } = chain();
++    w1.input = { iron_bar: 5 };
++    const items = warehouseLines(s, w2).map((l) => l.item);
++    expect(items.sort()).toEqual(['coal', 'iron_bar']);
++    // a filter on the belt narrows it to that one item
++    setBeltFilter(s, s.belts.find((b) => b.from === w1.id)!.id, 'iron_bar');
++    expect(warehouseLines(s, w2).map((l) => l.item)).toEqual(['iron_bar']);
++  });
++
++  it('copes with warehouses feeding each other in a loop', () => {
++    const { s, w1, w2 } = chain();
++    createLink(s, w2.id, w1.id);
++    expect(warehouseLines(s, w1).map((l) => l.item)).toEqual(['coal']);
++  });
++
++  it('keeps showing items with a reserve after they run out', () => {
++    const { s, w1 } = chain();
++    setReserve(s, w1.id, 'gear', 50);
++    expect(warehouseLines(s, w1).find((l) => l.item === 'gear')).toEqual({ item: 'gear', have: 0, keep: 50, from: [] });
+   });
+ });
