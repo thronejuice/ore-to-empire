@@ -79,6 +79,12 @@ export function outbox(b: Building): Inventory {
   return b.type === 'warehouse' ? b.input : b.output;
 }
 
+/** how many of an item a warehouse holds back (Infinity = all of it) */
+export function reserveOf(b: Building, item: ItemId): number {
+  const r = b.reserve?.[item] ?? 0;
+  return r < 0 ? Infinity : r;
+}
+
 function deliver(state: GameState, b: Building, item: ItemId, events?: SimEvent[]) {
   if (isSeller(b.type)) {
     const amount = sell(state, 'local', item, 1);
@@ -282,12 +288,13 @@ function pushOutputs(b: Building, outs: Belt[], buildingsById: Map<number, Build
     if (last && last.pos < BALANCE.beltSpacing) continue;
     const dst = buildingsById.get(belt.to);
     if (!dst) continue;
-    const keys = Object.keys(box) as ItemId[];
+    const keys = (belt.filter ? [belt.filter] : Object.keys(box)) as ItemId[];
     if (!keys.length) break;
     const start = (b.rr + k) % keys.length;
     for (let j = 0; j < keys.length; j++) {
       const item = keys[(start + j) % keys.length];
-      if ((box[item] ?? 0) > 0 && acceptsType(dst, item)) {
+      const spare = (box[item] ?? 0) - (b.type === 'warehouse' ? reserveOf(b, item) : 0);
+      if (spare >= 1 && acceptsType(dst, item)) {
         take(box, item, 1);
         belt.items.push({ item, pos: 0 });
         break;

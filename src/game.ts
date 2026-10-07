@@ -7,7 +7,9 @@ import {
   planLink,
   removeBuilding,
   removeLink,
+  setBeltFilter,
   setRecipe,
+  stepReserve,
   upgradeBelts,
   upgradeBuilding,
   type ActionResult,
@@ -29,6 +31,8 @@ import type { BeltView, GameState } from './core/types';
 import { applyTidy, planTidy, type TidyPlan } from './core/tidy';
 import { buyLicence, terrainAt } from './core/zones';
 import { translate, type Lang } from './i18n';
+import { backgroundAlerts } from './core/alerts';
+import { cancelScheduled, notifyPermission, requestNotify, scheduleWhileHidden } from './notify';
 import { sfx, setSoundEnabled, type Sfx } from './audio';
 
 export type Mode =
@@ -36,6 +40,10 @@ export type Mode =
   | { kind: 'build'; type: BuildingType }
   | { kind: 'link'; from: number | null }
   | { kind: 'move'; id: number };
+
+/** cards that stay on screen until closed */
+export type NoticeInput = { kind: 'research'; research: ResearchId } | { kind: 'contract'; item: ItemId; reward: number };
+export type Notice = NoticeInput & { id: number };
 
 export interface Toast {
   id: number;
@@ -78,6 +86,9 @@ export interface UiState {
   tidy: TidyPlan | null;
   /** the intro slides were reopened from Settings */
   intro: boolean;
+  notices: Notice[];
+  /** offer browser notifications (after the first research is started) */
+  askNotify: boolean;
 }
 
 /**
@@ -117,6 +128,8 @@ export class Game {
     focus: null,
     tidy: null,
     intro: false,
+    notices: [],
+    askNotify: false,
   };
   events: SimEvent[] = [];
   structureVersion = 0;
@@ -227,11 +240,11 @@ export class Game {
       const e = this.events[i];
       if (e.type === 'sold') sold = true;
       else if (e.type === 'research') {
-        this.toast(`${this.t('ui.researchDone')}: ${this.t(`r.${e.id}.t`)}`, 'success');
+        this.notice({ kind: 'research', research: e.id });
         this.play('research');
         this.structureChanged();
       } else if (e.type === 'contract_done') {
-        this.toast(this.t('ui.contractDone', { item: this.t(`item.${e.contract.item}`), reward: Math.round(e.contract.reward).toLocaleString() }), 'success');
+        this.notice({ kind: 'contract', item: e.contract.item, reward: e.contract.reward });
         this.play('quest');
       } else if (e.type === 'vein_spawn') {
         this.toast(this.t('ui.veinFound', { ore: this.t(`item.${e.vein.type}`), n: e.vein.total.toLocaleString() }), 'success');
@@ -255,8 +268,63 @@ export class Game {
   }
 
   private onVisibility = () => {
-    if (document.visibilityState === 'hidden') this.save();
+    if (document.visibilityState === 'hidden') {
+      this.save();
+      this.scheduleBackgroundAlerts();
+    } else cancelScheduled();
   };
+
+  /** the game pauses in a background tab: queue tab-title changes and notifications for what we know will happen */
+  private scheduleBackgroundAlerts() {
+    const notify = this.state.settings.notify === 'on' && notifyPermission() === 'granted';
+    scheduleWhileHidden(
+      backgroundAlerts(this.state).map((a) =>
+        a.kind === 'research'
+          ? {
+              delayMs: a.delayMs,
+              tag: a.tag,
+              title: this.t('notify.researchTitle'),
+              body: this.t('notify.researchBody', { name: this.t(`r.${a.research}.t`) }),
+              tab: this.t('notify.researchTab'),
+              notify,
+            }
+          : {
+              delayMs: a.delayMs,
+              tag: a.tag,
+              title: this.t('notify.contractTitle'),
+              body: this.t('notify.contractBody', { item: this.t(`item.${a.item}`), n: a.left ?? 0 }),
+              tab: this.t('notify.contractTab'),
+              notify,
+            },
+      ),
+    );
+  }
+
+  /** a card that stays until closed; a newer research card replaces the older one */
+  notice(n: NoticeInput) {
+    const id = ++this.toastId;
+    const keep = this.ui.notices.filter((x) => !(n.kind === 'research' && x.kind === 'research'));
+    this.ui.notices = [...keep, { ...n, id }].slice(-3);
+    this.emit();
+  }
+
+  dismissNotice(id: number) {
+    this.ui.notices = this.ui.notices.filter((n) => n.id !== id);
+    this.emit();
+  }
+
+  /** answer to "notify me when research finishes?" */
+  async answerNotify(yes: boolean) {
+    this.ui.askNotify = false;
+    this.state.settings.notify = yes && (await requestNotify()) ? 'on' : 'off';
+    if (yes && this.state.settings.notify === 'off') this.toast(this.t('notify.blocked'), 'error');
+    this.save();
+    this.emit();
+  }
+
+  async setNotify(on: boolean) {
+    await this.answerNotify(on);
+  }
 
   private onHide = () => this.save();
 
@@ -270,6 +338,8 @@ export class Game {
     }
     const report = applyOffline(this.state, away);
     if (report && (report.earned > 0 || report.researchDone.length)) this.ui.offline = report;
+    const lastDone = report?.researchDone[report.researchDone.length - 1];
+    if (lastDone) this.notice({ kind: 'research', research: lastDone as ResearchId });
     this.structureChanged();
   }
 
@@ -535,6 +605,14 @@ export class Game {
     if (this.result(setRecipe(this.state, id, recipe))) this.structureChanged();
   }
 
+  setBeltFilter(beltId: number, item: ItemId | null) {
+    if (this.result(setBeltFilter(this.state, beltId, item))) this.structureChanged();
+  }
+
+  stepReserve(buildingId: number, item: ItemId, dir: 1 | -1) {
+    if (this.result(stepReserve(this.state, buildingId, item, dir))) this.emit();
+  }
+
   removeBelt(id: number) {
     if (this.result(removeLink(this.state, id))) this.structureChanged();
   }
@@ -614,6 +692,8 @@ export class Game {
   research(id: ResearchId) {
     if (this.check(startResearch(this.state, id))) {
       this.play('click');
+      this.ui.notices = this.ui.notices.filter((n) => n.kind !== 'research');
+      if (this.state.settings.notify === undefined && notifyPermission() !== 'unsupported' && notifyPermission() !== 'denied') this.ui.askNotify = true;
       this.emit();
     }
   }

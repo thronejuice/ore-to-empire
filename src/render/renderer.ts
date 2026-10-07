@@ -19,7 +19,7 @@ import { plotForSale, plotPrice } from '../core/land';
 import { extractAt, isExtractor, zoneLicensed, zoneOfPlot, zoneOfTile } from '../core/zones';
 import { plotsPerRow } from '../core/state';
 import { gradeAt } from '../core/veins';
-import { canPlace, linkCarriesIn } from '../core/actions';
+import { beltCarries, canPlace } from '../core/actions';
 import { pointAt } from '../core/pathfind';
 import { getBuilding, hqPosition, idx, isUnlocked } from '../core/state';
 import type { Belt, Building } from '../core/types';
@@ -441,7 +441,7 @@ export class Renderer {
     const from = getBuilding(s, belt.from);
     const to = getBuilding(s, belt.to);
     if (!from || !to) return C.beltEdge;
-    const carries = linkCarriesIn(s, from, to);
+    const carries = beltCarries(s, belt);
     if (!carries.length) return C.bad;
     if (from.type === 'warehouse' && carries.length > 3) return C.beltEdge; // mixed cargo
     return ITEMS[carries[0]].color;

@@ -1,3 +1,4 @@
+import { notifyPermission } from '../notify';
 import { useState } from 'react';
 import { BALANCE, ITEMS, beltSpeed, beltUpgradeCost, type ItemId } from '../config/balance';
 import { beltMaxLevel } from '../core/economy';
@@ -130,6 +131,22 @@ export function SettingsPanel() {
           </button>
         </div>
       </div>
+      {notifyPermission() !== 'unsupported' && (
+        <div className="setting">
+          <span>
+            {t('notify.setting')}
+            {notifyPermission() === 'denied' && <span className="small warn"> · {t('notify.blockedShort')}</span>}
+          </span>
+          <div className="seg">
+            <button className={game.state.settings.notify === 'on' ? 'active' : ''} onClick={() => void game.setNotify(true)}>
+              {t('ui.on')}
+            </button>
+            <button className={game.state.settings.notify !== 'on' ? 'active' : ''} onClick={() => void game.setNotify(false)}>
+              {t('ui.off')}
+            </button>
+          </div>
+        </div>
+      )}
       <div className="setting">
         <span>{t('intro.howToPlay')}</span>
         <button className="btn small" onClick={() => game.openIntro()}>

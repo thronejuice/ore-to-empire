@@ -14,10 +14,10 @@ import {
 } from '../config/balance';
 import { globalSpeed, powerMult, recipeUnlocked } from '../core/economy';
 import { tileMult } from '../core/veins';
-import { FUEL, isCrafter } from '../core/sim';
+import { FUEL, acceptsType, isCrafter } from '../core/sim';
 import { extractedItem } from '../core/zones';
 import { OreInfo } from './TileSheet';
-import { freeMoveLeft, isUpgradable, linkCarriesIn, moveFee, totalInvested } from '../core/actions';
+import { beltCarries, freeMoveLeft, isUpgradable, moveFee, totalInvested } from '../core/actions';
 import { getBuilding, invTotal } from '../core/state';
 import { fmtClock, fmtMoney, fmtNum } from '../i18n';
 import { useGame, useHighlight, useT } from './hooks';
@@ -164,7 +164,49 @@ export function Inspector() {
         </div>
       </>
     );
-  } else if (b.type === 'warehouse' || b.type === 'dock') {
+  } else if (b.type === 'warehouse') {
+    const cap = storageCapacity(b.type, b.level);
+    const total = invTotal(b.input);
+    // everything stocked, plus items with a reserve set but none in stock right now
+    const items = [...new Set([...(Object.keys(b.input) as ItemId[]).filter((i) => (b.input[i] ?? 0) >= 1), ...(Object.keys(b.reserve ?? {}) as ItemId[])])];
+    body = (
+      <>
+        <div className="kv">
+          <span>{t('ui.capacity')}</span>
+          <span className="mono">
+            {Math.floor(total)} / {cap}
+          </span>
+        </div>
+        <div className="section-label">{t('wh.stock')}</div>
+        {items.length === 0 ? (
+          <p className="small dim">{t('ui.empty')}</p>
+        ) : (
+          <ul className="wh-stock">
+            {items.map((i) => {
+              const r = b.reserve?.[i] ?? 0;
+              return (
+                <li key={i}>
+                  <ItemIcon item={i} size={18} />
+                  <span className="wh-name">{t(`item.${i}`)}</span>
+                  <span className="mono wh-have">{Math.floor(b.input[i] ?? 0)}</span>
+                  <span className="wh-keep">
+                    <button className="icon-btn small" disabled={r === 0} onClick={() => game.stepReserve(b.id, i, -1)} aria-label={t('wh.less')}>
+                      −
+                    </button>
+                    <span className={`mono ${r ? 'warn' : 'dim'}`}>{r < 0 ? t('wh.keepAll') : r || '–'}</span>
+                    <button className="icon-btn small" disabled={r < 0} onClick={() => game.stepReserve(b.id, i, 1)} aria-label={t('wh.more')}>
+                      +
+                    </button>
+                  </span>
+                </li>
+              );
+            })}
+          </ul>
+        )}
+        <p className="small dim">{t('wh.keepHint')}</p>
+      </>
+    );
+  } else if (b.type === 'dock') {
     const cap = storageCapacity(b.type, b.level);
     const total = invTotal(b.input);
     body = (
@@ -232,15 +274,41 @@ export function Inspector() {
   const beltRow = (beltId: number, otherId: number, dir: 'out' | 'in') => {
     const other = getBuilding(s, otherId);
     if (!other) return null;
-    const src = dir === 'out' ? b : other;
     const dst = dir === 'out' ? other : b;
-    const carries = linkCarriesIn(s, src, dst);
+    const belt = s.belts.find((x) => x.id === beltId)!;
+    const carries = beltCarries(s, belt);
+    // a warehouse's outgoing belts can be set to one item: offer what's in stock or arriving, that the target takes
+    const sorting = dir === 'out' && b.type === 'warehouse';
+    const choices = sorting
+      ? [
+          ...new Set<ItemId>([
+            ...(Object.keys(b.input) as ItemId[]),
+            ...ins.flatMap((x) => beltCarries(s, x)),
+            ...(belt.filter ? [belt.filter] : []),
+          ]),
+        ].filter((i) => acceptsType(dst, i))
+      : [];
     return (
       <li key={beltId}>
         <span className="belt-dir">{dir === 'out' ? '→' : '←'}</span>
         <button className="belt-target" onClick={() => game.select(other.id)}>
           {t(`b.${other.type}`)}
         </button>
+        {sorting ? (
+          <select
+            className="belt-filter"
+            value={belt.filter ?? ''}
+            onChange={(e) => game.setBeltFilter(beltId, (e.target.value || null) as ItemId | null)}
+            aria-label={t('wh.sendWhat')}
+          >
+            <option value="">{t('wh.auto')}</option>
+            {choices.map((i) => (
+              <option key={i} value={i}>
+                {t(`item.${i}`)}
+              </option>
+            ))}
+          </select>
+        ) : null}
         <span className="belt-carries">
           {carries.length ? carries.slice(0, 3).map((i) => <ItemIcon key={i} item={i} />) : <span className="bad small">✕</span>}
         </span>

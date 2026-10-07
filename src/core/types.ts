@@ -27,6 +27,8 @@ export interface Building {
   rr: number;
   /** game time when built (moves are free for a short while after) */
   placedAt?: number;
+  /** warehouses: how many of each item to keep instead of sending on (-1 = keep all) */
+  reserve?: Inventory;
 }
 
 export interface BeltItem {
@@ -42,6 +44,8 @@ export interface Belt {
   points: [number, number][];
   length: number;
   items: BeltItem[];
+  /** belts leaving a warehouse: carry only this item (unset = anything the destination takes) */
+  filter?: ItemId;
 }
 
 export interface Stats {
@@ -148,7 +152,8 @@ export interface GameState {
   /** introSeen: false only on a fresh save until the intro popup is closed; older saves lack it (= seen) */
   quests: { done: string[]; tutorialSkipped: boolean; introSeen?: boolean };
   /** seenVersion: the last game version whose "what's new" notes the player closed */
-  settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView; seenVersion?: string };
+  /** notify: browser notifications while the tab is in the background (unset = not asked yet) */
+  settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView; seenVersion?: string; notify?: 'on' | 'off' };
   /** the player's name (v1.0.0; older saves don't have one until the player picks it) */
   player?: { name: string };
 

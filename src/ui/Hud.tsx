@@ -1,5 +1,8 @@
 import { BUILDINGS } from '../config/balance';
-import { QUESTS, currentQuest, currentQuestIndex } from '../core/quests';
+import { QUESTS, currentQuest, currentQuestIndex, metaUnlocked } from '../core/quests';
+import { availableResearchCount, unlocksOf, type Unlock } from '../core/alerts';
+import { researchEffects } from './MetaPanels';
+import type { Notice } from '../game';
 import { incomePerMinute } from '../core/sim';
 import { boostActive } from '../core/economy';
 import { moveFee } from '../core/actions';
@@ -53,10 +56,17 @@ export function TopBar() {
             {game.online!.onlineCount}
           </span>
         )}
-        {s.research.active && (
+        {s.research.active ? (
           <button className="chip mono" onClick={() => game.openPanel('research')}>
             <NavIcon panel="research" size={14} /> {fmtClock(s.research.active.remaining)}
           </button>
+        ) : (
+          metaUnlocked(s) &&
+          availableResearchCount(s) > 0 && (
+            <button className="chip research-idle" onClick={() => game.openPanel('research')} title={t('notice.labIdle')}>
+              <NavIcon panel="research" size={14} /> ✓ {t('notice.researchNextShort')}
+            </button>
+          )
         )}
         {s.veins.length > 0 && (
           <button className="chip vein" onClick={() => game.focusVein()} title={t('ui.richVein')}>
@@ -272,6 +282,104 @@ export function MapTools() {
         </svg>
         <span>{game.ui.busy ? t('ui.working') : t('ui.tidy')}</span>
       </button>
+    </div>
+  );
+}
+
+/** cards that stay until closed: research done, contract done, and the notification offer */
+export function Notices() {
+  const game = useGame();
+  const t = useT();
+  const { notices, askNotify } = game.ui;
+  if (!notices.length && !askNotify) return null;
+  const s = game.state;
+  const unlockLabel = (u: Unlock) =>
+    u.kind === 'building'
+      ? t(`b.${u.id}`)
+      : u.kind === 'item'
+        ? t(`item.${u.id}`)
+        : u.kind === 'zone'
+          ? t('notice.zoneLicence', { zone: t(`zone.${u.id}`) })
+          : u.kind === 'city'
+            ? t(`city.${u.id}`)
+            : t(`veh.${u.id}`);
+  const card = (n: Notice) => {
+    const close = (
+      <button className="icon-btn small" onClick={() => game.dismissNotice(n.id)} aria-label={t('ui.close')}>
+        ✕
+      </button>
+    );
+    if (n.kind === 'research') {
+      const opens = [...unlocksOf(n.research).map(unlockLabel), ...researchEffects(n.research, t)];
+      const avail = availableResearchCount(s);
+      return (
+        <div key={n.id} className="notice research" role="status">
+          <div className="notice-head">
+            <NavIcon panel="research" size={16} />
+            <span className="notice-kind">{t('notice.researchDone')}</span>
+            {close}
+          </div>
+          <strong className="notice-title">{t(`r.${n.research}.t`)}</strong>
+          {opens.length > 0 && (
+            <p className="small">
+              <span className="dim">{t('notice.unlocked')}</span> {opens.join(' · ')}
+            </p>
+          )}
+          <div className="notice-actions">
+            <button
+              className="btn small primary"
+              onClick={() => {
+                game.dismissNotice(n.id);
+                if (game.ui.panel !== 'research') game.openPanel('research');
+              }}
+            >
+              {avail > 0 ? t('notice.researchNext') : t('notice.openResearch')} →
+            </button>
+            {avail > 0 && <span className="small dim">{t('notice.availableN', { n: avail })}</span>}
+          </div>
+        </div>
+      );
+    }
+    return (
+      <div key={n.id} className="notice contract" role="status">
+        <div className="notice-head">
+          <NavIcon panel="contracts" size={16} />
+          <span className="notice-kind">{t('notice.contractDone')}</span>
+          {close}
+        </div>
+        <strong className="notice-title">
+          {t(`item.${n.item}`)} · <span className="mono good">+{fmtMoney(n.reward)}</span>
+        </strong>
+        <div className="notice-actions">
+          <button
+            className="btn small"
+            onClick={() => {
+              game.dismissNotice(n.id);
+              if (game.ui.panel !== 'contracts') game.openPanel('contracts');
+            }}
+          >
+            {t('notice.newContracts')} →
+          </button>
+        </div>
+      </div>
+    );
+  };
+  return (
+    <div className="notices">
+      {askNotify && (
+        <div className="notice ask" role="dialog">
+          <p className="small">{t('notify.ask')}</p>
+          <div className="notice-actions">
+            <button className="btn small primary" onClick={() => void game.answerNotify(true)}>
+              {t('notify.yes')}
+            </button>
+            <button className="btn small ghost" onClick={() => void game.answerNotify(false)}>
+              {t('notify.no')}
+            </button>
+          </div>
+        </div>
+      )}
+      {notices.map(card)}
     </div>
   );
 }

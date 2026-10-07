@@ -40,6 +40,18 @@ const TIERS = ['ui.tierA', 'ui.tierB', 'ui.tierC', 'ui.tierD', 'ui.tierE', 'ui.t
 
 type ResearchTab = 'available' | 'locked' | 'done';
 
+/** "machines +10 %" etc. for a research */
+export function researchEffects(id: ResearchId, t: (k: string, p?: Record<string, string | number>) => string): string[] {
+  const def = RESEARCH[id];
+  const e: string[] = [];
+  if (def.speed) e.push(t('ui.effectSpeed', { pct: Math.round(def.speed * 100) }));
+  if (def.powerSave) e.push(t('ui.effectPower', { pct: Math.round(def.powerSave * 100) }));
+  if (def.beltMax) e.push(t('ui.effectBelt', { n: def.beltMax }));
+  if (def.capacity) e.push(t('ui.effectCapacity', { pct: Math.round(def.capacity * 100) }));
+  if (def.moveDiscount) e.push(t('ui.effectMove', { pct: Math.round(def.moveDiscount * 100) }));
+  return e;
+}
+
 /** research that lists `id` among its requirements */
 const leadsTo = (id: ResearchId) => (Object.keys(RESEARCH) as ResearchId[]).filter((r) => RESEARCH[r].requires.includes(id));
 
@@ -72,16 +84,7 @@ export function ResearchPanel() {
     setTab(st === 'available' ? 'available' : st === 'done' ? 'done' : 'locked');
     setFlash(id);
   };
-  const effectsOf = (id: ResearchId) => {
-    const def = RESEARCH[id];
-    const e: string[] = [];
-    if (def.speed) e.push(t('ui.effectSpeed', { pct: Math.round(def.speed * 100) }));
-    if (def.powerSave) e.push(t('ui.effectPower', { pct: Math.round(def.powerSave * 100) }));
-    if (def.beltMax) e.push(t('ui.effectBelt', { n: def.beltMax }));
-    if (def.capacity) e.push(t('ui.effectCapacity', { pct: Math.round(def.capacity * 100) }));
-    if (def.moveDiscount) e.push(t('ui.effectMove', { pct: Math.round(def.moveDiscount * 100) }));
-    return e;
-  };
+  const effectsOf = (id: ResearchId) => researchEffects(id, t);
   const chips = (list: ResearchId[]) =>
     list.map((r) => (
       <button key={r} className="link-btn chip-link" onClick={() => goTo(r)}>

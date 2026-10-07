@@ -1974,3 +1974,137 @@ select:focus-visible {
   align-items: center;
   gap: 8px;
 }
+
+/* notices: cards that stay until closed */
+.notices {
+  position: absolute;
+  top: calc(84px + var(--safe-top));
+  left: 50%;
+  transform: translateX(-50%);
+  z-index: 31;
+  width: min(420px, calc(100% - 24px));
+  display: flex;
+  flex-direction: column;
+  gap: 8px;
+  pointer-events: none;
+}
+.notice {
+  pointer-events: auto;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+  padding: 10px 12px;
+  background: var(--panel);
+  border: 1px solid var(--edge);
+  border-left: 4px solid var(--blue);
+  border-radius: var(--radius);
+  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
+  animation: notice-in 0.3s cubic-bezier(0.2, 1.3, 0.4, 1);
+}
+@keyframes notice-in {
+  from {
+    opacity: 0;
+    transform: translateY(-8px) scale(0.96);
+  }
+}
+.notice.research {
+  border-left-color: var(--green);
+}
+.notice.contract {
+  border-left-color: var(--amber);
+}
+.notice p {
+  margin: 0;
+  line-height: 1.4;
+}
+.notice-head {
+  display: flex;
+  align-items: center;
+  gap: 6px;
+}
+.notice-kind {
+  flex: 1;
+  font-size: 12px;
+  font-weight: 700;
+  letter-spacing: 0.02em;
+  color: var(--dim);
+  text-transform: uppercase;
+}
+.notice.research .notice-kind {
+  color: var(--green);
+}
+.notice.contract .notice-kind {
+  color: var(--amber);
+}
+.notice-title {
+  font-size: 16px;
+}
+.notice-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  margin-top: 4px;
+}
+.chip.research-idle {
+  border-color: var(--green);
+  color: var(--green);
+  animation: idle-pulse 1.6s ease-in-out infinite;
+}
+@keyframes idle-pulse {
+  50% {
+    box-shadow: 0 0 0 4px rgba(61, 220, 151, 0.18);
+  }
+}
+@media (prefers-reduced-motion: reduce) {
+  .chip.research-idle {
+    animation: none;
+  }
+}
+
+/* warehouse stock & reserve */
+.wh-stock {
+  list-style: none;
+  margin: 0;
+  padding: 0;
+  display: flex;
+  flex-direction: column;
+  gap: 4px;
+}
+.wh-stock li {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  background: var(--panel-2);
+}
+.wh-name {
+  flex: 1;
+  min-width: 0;
+  overflow: hidden;
+  text-overflow: ellipsis;
+  white-space: nowrap;
+}
+.wh-have {
+  min-width: 36px;
+  text-align: right;
+}
+.wh-keep {
+  display: flex;
+  align-items: center;
+  gap: 4px;
+}
+.wh-keep .mono {
+  min-width: 52px;
+  text-align: center;
+}
+.belt-filter {
+  max-width: 140px;
+  padding: 4px 6px;
+  border-radius: 8px;
+  border: 1px solid var(--edge-2);
+  background: var(--panel-2);
+  color: var(--text);
+  font: inherit;
+  font-size: 13px;
+}

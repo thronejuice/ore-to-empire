@@ -4,7 +4,7 @@ import { hasStoredSession, onlineConfigured } from '../online/config';
 import { Renderer } from '../render/renderer';
 import { BuildDrawer } from './BuildDrawer';
 import { GameContext } from './hooks';
-import { BottomBar, MapTools, QuestCard, QuestDoneBanner, Toasts, TopBar } from './Hud';
+import { BottomBar, MapTools, Notices, QuestCard, QuestDoneBanner, Toasts, TopBar } from './Hud';
 import { Inspector } from './Inspector';
 import { OfflineModal, SettingsPanel, StatsPanel, UpgradesPanel } from './Panels';
 import { ContractsPanel, DailyPanel, FleetPanel, MarketsPanel, MenuSheet, PlotSheet, ExpansionPanel, ResearchPanel } from './MetaPanels';
@@ -63,6 +63,7 @@ export function App() {
           <QuestCard />
         </div>
         <QuestDoneBanner />
+        <Notices />
         <Toasts />
         <Inspector />
         <PlotSheet />

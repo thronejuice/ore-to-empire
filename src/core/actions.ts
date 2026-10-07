@@ -198,6 +198,45 @@ export function linkCarriesIn(state: GameState, src: Building, dst: Building): I
   return linkCarries(src, dst);
 }
 
+/** what this belt can carry, with a warehouse belt's item filter applied */
+export function beltCarries(state: GameState, belt: Belt): ItemId[] {
+  const src = getBuilding(state, belt.from);
+  const dst = getBuilding(state, belt.to);
+  if (!src || !dst) return [];
+  if (belt.filter) return acceptsType(dst, belt.filter) ? [belt.filter] : [];
+  return linkCarriesIn(state, src, dst);
+}
+
+/** belts leaving a warehouse: carry only one item, or anything (null) */
+export function setBeltFilter(state: GameState, beltId: number, item: ItemId | null): ActionResult<undefined> {
+  const belt = state.belts.find((b) => b.id === beltId);
+  if (!belt) return fail('err.notFound');
+  if (getBuilding(state, belt.from)?.type !== 'warehouse') return fail('err.notWarehouse');
+  if (item) {
+    const dst = getBuilding(state, belt.to);
+    if (!dst || !acceptsType(dst, item)) return fail('err.cantCarry');
+    belt.filter = item;
+  } else delete belt.filter;
+  // items already riding that no longer match stay on and get delivered: nothing is lost
+  return ok(undefined);
+}
+
+/** steps for the warehouse "keep in stock" control; -1 = keep everything */
+export const RESERVE_STEPS = [0, 10, 25, 50, 100, 200, 500, 1000, -1];
+
+/** move a warehouse's reserve for one item one step up (+1) or down (-1) */
+export function stepReserve(state: GameState, buildingId: number, item: ItemId, dir: 1 | -1): ActionResult<number> {
+  const b = getBuilding(state, buildingId);
+  if (!b || b.type !== 'warehouse') return fail('err.notWarehouse');
+  const cur = b.reserve?.[item] ?? 0;
+  let i = RESERVE_STEPS.indexOf(cur);
+  if (i < 0) i = RESERVE_STEPS.findIndex((v) => v > cur || v < 0); // a value from elsewhere: snap to the next step
+  const next = RESERVE_STEPS[Math.max(0, Math.min(RESERVE_STEPS.length - 1, i + dir))];
+  b.reserve = { ...b.reserve, [item]: next };
+  if (!next) delete b.reserve[item];
+  return ok(next);
+}
+
 export interface LinkPlan {
   path: [number, number][];
   cost: number;
