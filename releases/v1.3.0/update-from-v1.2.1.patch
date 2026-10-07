@@ -1,0 +1,1302 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 39d8e29..3e4d31c 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -9,6 +9,26 @@
+ 
+ <!-- release-script: each "## [x.y.z]" section is copied into releases/vx.y.z/CHANGES.md -->
+ 
++## [1.3.0] - 2026-10-07
++
++### เพิ่มใหม่
++- **การ์ดแจ้งเตือนที่ค้างจนกดปิด** ด้านบนกลางจอ ไม่บังแผนที่
++  - วิจัยเสร็จ: บอกชื่อหัวข้อและสิ่งที่ปลดล็อก (อาคาร สินค้า ใบอนุญาตโซน เมือง ยานพาหนะ หรือผลที่ได้) พร้อมปุ่ม "วิจัยต่อ" และจำนวนหัวข้อที่พร้อมวิจัย
++  - สัญญาสำเร็จ: บอกสินค้าและเงินรางวัล พร้อมปุ่ม "ดูสัญญาใหม่"
++  - งานวิจัยที่เสร็จระหว่างปิดเกม ก็ขึ้นการ์ดตอนกลับมาด้วย
++- **ป้าย "✓ วิจัยต่อ" บนแถบด้านบน** กระพริบเมื่อห้องวิจัยว่างและมีหัวข้อที่วิจัยได้
++- **แจ้งเตือนตอนเปิดแท็บอื่น:** ชื่อแท็บเปลี่ยนเป็น "✓ วิจัยเสร็จ" หรือ "⚠ สัญญาใกล้หมดเวลา" และมีแจ้งเตือนของเบราว์เซอร์ (ถ้าอนุญาต) เมื่อวิจัยเสร็จ หรือเมื่อสัญญาที่ยังส่งไม่ครบเหลือเวลา 5 นาที
++  - ถามครั้งเดียวหลังเริ่มวิจัยครั้งแรก · เปิด/ปิดได้ในหน้าตั้งค่า
++  - สัญญาสำเร็จระหว่างอยู่แท็บอื่นแจ้งไม่ได้ เพราะเกมหยุดคำนวณ จะขึ้นเป็นการ์ดเมื่อกลับมา
++- **โกดังคัดแยกได้:** สายพานขาออกแต่ละเส้นเลือกได้ว่าส่งสินค้าชนิดไหน หรือ "อัตโนมัติ (ทุกอย่าง)" แบบเดิม
++- **โกดังเก็บสำรองได้:** ตั้งจำนวนที่เก็บไว้แยกทีละชนิดด้วยปุ่ม −/+ (10, 25, 50, 100, 200, 500, 1000, ทั้งหมด) ส่งออกเฉพาะส่วนที่เกิน
++
++### เปลี่ยนแปลง
++- ข้อความเล็กมุมจอตอนวิจัยเสร็จและสัญญาสำเร็จ เปลี่ยนเป็นการ์ดแทน
++
++### เซฟ
++- ใช้เซฟเดิมได้ เพิ่มช่องแบบไม่บังคับ: `belts[].filter`, `buildings[].reserve`, `settings.notify` ไม่เปลี่ยนเลขรูปแบบเซฟ
++
+ ## [1.2.1] - 2026-10-07
+ 
+ ### ปรับปรุง
+diff --git a/package-lock.json b/package-lock.json
+index 4200a20..d726a7c 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "1.2.1",
++  "version": "1.3.0",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "ore-to-empire",
+-      "version": "1.2.1",
++      "version": "1.3.0",
+       "dependencies": {
+         "@supabase/supabase-js": "^2.117.2",
+         "pixi.js": "^8.22.0",
+diff --git a/package.json b/package.json
+index 39e93c2..91b9a30 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "1.2.1",
++  "version": "1.3.0",
+   "scripts": {
+     "dev": "vite",
+     "build": "tsc --noEmit && vite build",
+diff --git a/public/notify-sw.js b/public/notify-sw.js
+new file mode 100644
+index 0000000..625e929
+--- /dev/null
++++ b/public/notify-sw.js
+@@ -0,0 +1,13 @@
++// Only shows notifications for Ore to Empire and brings the game back when one is tapped.
++// No caching: the game always loads from the network.
++self.addEventListener('install', () => self.skipWaiting());
++self.addEventListener('activate', (e) => e.waitUntil(self.clients.claim()));
++self.addEventListener('notificationclick', (e) => {
++  e.notification.close();
++  e.waitUntil(
++    self.clients.matchAll({ type: 'window', includeUncontrolled: true }).then((list) => {
++      for (const c of list) if ('focus' in c) return c.focus();
++      return self.clients.openWindow('/');
++    }),
++  );
++});
+diff --git a/src/core/actions.ts b/src/core/actions.ts
+index 87aceb6..333f050 100644
+--- a/src/core/actions.ts
++++ b/src/core/actions.ts
+@@ -198,6 +198,45 @@ export function linkCarriesIn(state: GameState, src: Building, dst: Building): I
+   return linkCarries(src, dst);
+ }
+ 
++/** what this belt can carry, with a warehouse belt's item filter applied */
++export function beltCarries(state: GameState, belt: Belt): ItemId[] {
++  const src = getBuilding(state, belt.from);
++  const dst = getBuilding(state, belt.to);
++  if (!src || !dst) return [];
++  if (belt.filter) return acceptsType(dst, belt.filter) ? [belt.filter] : [];
++  return linkCarriesIn(state, src, dst);
++}
++
++/** belts leaving a warehouse: carry only one item, or anything (null) */
++export function setBeltFilter(state: GameState, beltId: number, item: ItemId | null): ActionResult<undefined> {
++  const belt = state.belts.find((b) => b.id === beltId);
++  if (!belt) return fail('err.notFound');
++  if (getBuilding(state, belt.from)?.type !== 'warehouse') return fail('err.notWarehouse');
++  if (item) {
++    const dst = getBuilding(state, belt.to);
++    if (!dst || !acceptsType(dst, item)) return fail('err.cantCarry');
++    belt.filter = item;
++  } else delete belt.filter;
++  // items already riding that no longer match stay on and get delivered: nothing is lost
++  return ok(undefined);
++}
++
++/** steps for the warehouse "keep in stock" control; -1 = keep everything */
++export const RESERVE_STEPS = [0, 10, 25, 50, 100, 200, 500, 1000, -1];
++
++/** move a warehouse's reserve for one item one step up (+1) or down (-1) */
++export function stepReserve(state: GameState, buildingId: number, item: ItemId, dir: 1 | -1): ActionResult<number> {
++  const b = getBuilding(state, buildingId);
++  if (!b || b.type !== 'warehouse') return fail('err.notWarehouse');
++  const cur = b.reserve?.[item] ?? 0;
++  let i = RESERVE_STEPS.indexOf(cur);
++  if (i < 0) i = RESERVE_STEPS.findIndex((v) => v > cur || v < 0); // a value from elsewhere: snap to the next step
++  const next = RESERVE_STEPS[Math.max(0, Math.min(RESERVE_STEPS.length - 1, i + dir))];
++  b.reserve = { ...b.reserve, [item]: next };
++  if (!next) delete b.reserve[item];
++  return ok(next);
++}
++
+ export interface LinkPlan {
+   path: [number, number][];
+   cost: number;
+diff --git a/src/core/alerts.ts b/src/core/alerts.ts
+new file mode 100644
+index 0000000..7b78925
+--- /dev/null
++++ b/src/core/alerts.ts
+@@ -0,0 +1,63 @@
++import { BUILDINGS, CITIES, ITEMS, RECIPES, RESEARCH, VEHICLES, ZONES, type BuildingType, type CityId, type ItemId, type RecipeId, type ResearchId, type VehicleType, type ZoneId } from '../config/balance';
++import { PERK_VALUES } from '../config/meta';
++import { perk } from './economy';
++import { researchState } from './research';
++import type { GameState } from './types';
++
++/** seconds before a contract runs out that a background alert fires */
++export const CONTRACT_WARN_SECONDS = 300;
++
++export interface BackgroundAlert {
++  /** milliseconds from now */
++  delayMs: number;
++  /** groups alerts so a newer one replaces an older one */
++  tag: string;
++  kind: 'research' | 'contract';
++  research?: ResearchId;
++  item?: ItemId;
++  left?: number;
++}
++
++/**
++ * What to tell a player who switched to another tab. The game doesn't run while
++ * hidden, so only things whose time is known in advance are scheduled: the
++ * active research finishing, and active contracts nearing their deadline.
++ */
++export function backgroundAlerts(s: GameState): BackgroundAlert[] {
++  const out: BackgroundAlert[] = [];
++  const a = s.research.active;
++  if (a) {
++    const speed = 1 + perk(s, 'p_research_speed') * PERK_VALUES.researchSpeedPerLevel;
++    out.push({ delayMs: Math.max(0, (a.remaining / speed) * 1000), tag: 'research', kind: 'research', research: a.id });
++  }
++  for (const c of s.contracts.active) {
++    if (c.progress >= c.qty) continue;
++    const warnIn = c.expiresAt - s.time - CONTRACT_WARN_SECONDS;
++    if (warnIn > 0) out.push({ delayMs: warnIn * 1000, tag: `contract-${c.id}`, kind: 'contract', item: c.item, left: c.qty - c.progress });
++  }
++  return out;
++}
++
++export type Unlock =
++  | { kind: 'building'; id: BuildingType }
++  | { kind: 'item'; id: ItemId }
++  | { kind: 'zone'; id: ZoneId }
++  | { kind: 'city'; id: CityId }
++  | { kind: 'vehicle'; id: VehicleType };
++
++/** everything a research opens up, for the "research done" card */
++export function unlocksOf(id: ResearchId): Unlock[] {
++  const out: Unlock[] = [];
++  for (const b of Object.keys(BUILDINGS) as BuildingType[]) if (BUILDINGS[b].research === id) out.push({ kind: 'building', id: b });
++  const items = new Set<ItemId>();
++  for (const r of Object.keys(RECIPES) as RecipeId[]) if (RECIPES[r].research === id) for (const o of Object.keys(RECIPES[r].outputs) as ItemId[]) items.add(o);
++  for (const i of items) if (ITEMS[i]) out.push({ kind: 'item', id: i });
++  for (const z of Object.keys(ZONES) as ZoneId[]) if (ZONES[z].research === id) out.push({ kind: 'zone', id: z });
++  for (const c of Object.keys(CITIES) as CityId[]) if (CITIES[c].research === id) out.push({ kind: 'city', id: c });
++  for (const v of Object.keys(VEHICLES) as VehicleType[]) if (VEHICLES[v].research === id) out.push({ kind: 'vehicle', id: v });
++  return out;
++}
++
++export function availableResearchCount(s: GameState): number {
++  return (Object.keys(RESEARCH) as ResearchId[]).filter((r) => researchState(s, r) === 'available').length;
++}
+diff --git a/src/core/sim.ts b/src/core/sim.ts
+index 883659a..1a45e97 100644
+--- a/src/core/sim.ts
++++ b/src/core/sim.ts
+@@ -79,6 +79,12 @@ export function outbox(b: Building): Inventory {
+   return b.type === 'warehouse' ? b.input : b.output;
+ }
+ 
++/** how many of an item a warehouse holds back (Infinity = all of it) */
++export function reserveOf(b: Building, item: ItemId): number {
++  const r = b.reserve?.[item] ?? 0;
++  return r < 0 ? Infinity : r;
++}
++
+ function deliver(state: GameState, b: Building, item: ItemId, events?: SimEvent[]) {
+   if (isSeller(b.type)) {
+     const amount = sell(state, 'local', item, 1);
+@@ -282,12 +288,13 @@ function pushOutputs(b: Building, outs: Belt[], buildingsById: Map<number, Build
+     if (last && last.pos < BALANCE.beltSpacing) continue;
+     const dst = buildingsById.get(belt.to);
+     if (!dst) continue;
+-    const keys = Object.keys(box) as ItemId[];
++    const keys = (belt.filter ? [belt.filter] : Object.keys(box)) as ItemId[];
+     if (!keys.length) break;
+     const start = (b.rr + k) % keys.length;
+     for (let j = 0; j < keys.length; j++) {
+       const item = keys[(start + j) % keys.length];
+-      if ((box[item] ?? 0) > 0 && acceptsType(dst, item)) {
++      const spare = (box[item] ?? 0) - (b.type === 'warehouse' ? reserveOf(b, item) : 0);
++      if (spare >= 1 && acceptsType(dst, item)) {
+         take(box, item, 1);
+         belt.items.push({ item, pos: 0 });
+         break;
+diff --git a/src/core/types.ts b/src/core/types.ts
+index d736cff..6128691 100644
+--- a/src/core/types.ts
++++ b/src/core/types.ts
+@@ -27,6 +27,8 @@ export interface Building {
+   rr: number;
+   /** game time when built (moves are free for a short while after) */
+   placedAt?: number;
++  /** warehouses: how many of each item to keep instead of sending on (-1 = keep all) */
++  reserve?: Inventory;
+ }
+ 
+ export interface BeltItem {
+@@ -42,6 +44,8 @@ export interface Belt {
+   points: [number, number][];
+   length: number;
+   items: BeltItem[];
++  /** belts leaving a warehouse: carry only this item (unset = anything the destination takes) */
++  filter?: ItemId;
+ }
+ 
+ export interface Stats {
+@@ -148,7 +152,8 @@ export interface GameState {
+   /** introSeen: false only on a fresh save until the intro popup is closed; older saves lack it (= seen) */
+   quests: { done: string[]; tutorialSkipped: boolean; introSeen?: boolean };
+   /** seenVersion: the last game version whose "what's new" notes the player closed */
+-  settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView; seenVersion?: string };
++  /** notify: browser notifications while the tab is in the background (unset = not asked yet) */
++  settings: { lang: 'th' | 'en'; sound: boolean; beltView?: BeltView; seenVersion?: string; notify?: 'on' | 'off' };
+   /** the player's name (v1.0.0; older saves don't have one until the player picks it) */
+   player?: { name: string };
+ 
+diff --git a/src/game.ts b/src/game.ts
+index 577e438..578cb65 100644
+--- a/src/game.ts
++++ b/src/game.ts
+@@ -7,7 +7,9 @@ import {
+   planLink,
+   removeBuilding,
+   removeLink,
++  setBeltFilter,
+   setRecipe,
++  stepReserve,
+   upgradeBelts,
+   upgradeBuilding,
+   type ActionResult,
+@@ -29,6 +31,8 @@ import type { BeltView, GameState } from './core/types';
+ import { applyTidy, planTidy, type TidyPlan } from './core/tidy';
+ import { buyLicence, terrainAt } from './core/zones';
+ import { translate, type Lang } from './i18n';
++import { backgroundAlerts } from './core/alerts';
++import { cancelScheduled, notifyPermission, requestNotify, scheduleWhileHidden } from './notify';
+ import { sfx, setSoundEnabled, type Sfx } from './audio';
+ 
+ export type Mode =
+@@ -37,6 +41,10 @@ export type Mode =
+   | { kind: 'link'; from: number | null }
+   | { kind: 'move'; id: number };
+ 
++/** cards that stay on screen until closed */
++export type NoticeInput = { kind: 'research'; research: ResearchId } | { kind: 'contract'; item: ItemId; reward: number };
++export type Notice = NoticeInput & { id: number };
++
+ export interface Toast {
+   id: number;
+   text: string;
+@@ -78,6 +86,9 @@ export interface UiState {
+   tidy: TidyPlan | null;
+   /** the intro slides were reopened from Settings */
+   intro: boolean;
++  notices: Notice[];
++  /** offer browser notifications (after the first research is started) */
++  askNotify: boolean;
+ }
+ 
+ /**
+@@ -117,6 +128,8 @@ export class Game {
+     focus: null,
+     tidy: null,
+     intro: false,
++    notices: [],
++    askNotify: false,
+   };
+   events: SimEvent[] = [];
+   structureVersion = 0;
+@@ -227,11 +240,11 @@ export class Game {
+       const e = this.events[i];
+       if (e.type === 'sold') sold = true;
+       else if (e.type === 'research') {
+-        this.toast(`${this.t('ui.researchDone')}: ${this.t(`r.${e.id}.t`)}`, 'success');
++        this.notice({ kind: 'research', research: e.id });
+         this.play('research');
+         this.structureChanged();
+       } else if (e.type === 'contract_done') {
+-        this.toast(this.t('ui.contractDone', { item: this.t(`item.${e.contract.item}`), reward: Math.round(e.contract.reward).toLocaleString() }), 'success');
++        this.notice({ kind: 'contract', item: e.contract.item, reward: e.contract.reward });
+         this.play('quest');
+       } else if (e.type === 'vein_spawn') {
+         this.toast(this.t('ui.veinFound', { ore: this.t(`item.${e.vein.type}`), n: e.vein.total.toLocaleString() }), 'success');
+@@ -255,9 +268,64 @@ export class Game {
+   }
+ 
+   private onVisibility = () => {
+-    if (document.visibilityState === 'hidden') this.save();
++    if (document.visibilityState === 'hidden') {
++      this.save();
++      this.scheduleBackgroundAlerts();
++    } else cancelScheduled();
+   };
+ 
++  /** the game pauses in a background tab: queue tab-title changes and notifications for what we know will happen */
++  private scheduleBackgroundAlerts() {
++    const notify = this.state.settings.notify === 'on' && notifyPermission() === 'granted';
++    scheduleWhileHidden(
++      backgroundAlerts(this.state).map((a) =>
++        a.kind === 'research'
++          ? {
++              delayMs: a.delayMs,
++              tag: a.tag,
++              title: this.t('notify.researchTitle'),
++              body: this.t('notify.researchBody', { name: this.t(`r.${a.research}.t`) }),
++              tab: this.t('notify.researchTab'),
++              notify,
++            }
++          : {
++              delayMs: a.delayMs,
++              tag: a.tag,
++              title: this.t('notify.contractTitle'),
++              body: this.t('notify.contractBody', { item: this.t(`item.${a.item}`), n: a.left ?? 0 }),
++              tab: this.t('notify.contractTab'),
++              notify,
++            },
++      ),
++    );
++  }
++
++  /** a card that stays until closed; a newer research card replaces the older one */
++  notice(n: NoticeInput) {
++    const id = ++this.toastId;
++    const keep = this.ui.notices.filter((x) => !(n.kind === 'research' && x.kind === 'research'));
++    this.ui.notices = [...keep, { ...n, id }].slice(-3);
++    this.emit();
++  }
++
++  dismissNotice(id: number) {
++    this.ui.notices = this.ui.notices.filter((n) => n.id !== id);
++    this.emit();
++  }
++
++  /** answer to "notify me when research finishes?" */
++  async answerNotify(yes: boolean) {
++    this.ui.askNotify = false;
++    this.state.settings.notify = yes && (await requestNotify()) ? 'on' : 'off';
++    if (yes && this.state.settings.notify === 'off') this.toast(this.t('notify.blocked'), 'error');
++    this.save();
++    this.emit();
++  }
++
++  async setNotify(on: boolean) {
++    await this.answerNotify(on);
++  }
++
+   private onHide = () => this.save();
+ 
+   /** credits real time that passed while the game wasn't running */
+@@ -270,6 +338,8 @@ export class Game {
+     }
+     const report = applyOffline(this.state, away);
+     if (report && (report.earned > 0 || report.researchDone.length)) this.ui.offline = report;
++    const lastDone = report?.researchDone[report.researchDone.length - 1];
++    if (lastDone) this.notice({ kind: 'research', research: lastDone as ResearchId });
+     this.structureChanged();
+   }
+ 
+@@ -535,6 +605,14 @@ export class Game {
+     if (this.result(setRecipe(this.state, id, recipe))) this.structureChanged();
+   }
+ 
++  setBeltFilter(beltId: number, item: ItemId | null) {
++    if (this.result(setBeltFilter(this.state, beltId, item))) this.structureChanged();
++  }
++
++  stepReserve(buildingId: number, item: ItemId, dir: 1 | -1) {
++    if (this.result(stepReserve(this.state, buildingId, item, dir))) this.emit();
++  }
++
+   removeBelt(id: number) {
+     if (this.result(removeLink(this.state, id))) this.structureChanged();
+   }
+@@ -614,6 +692,8 @@ export class Game {
+   research(id: ResearchId) {
+     if (this.check(startResearch(this.state, id))) {
+       this.play('click');
++      this.ui.notices = this.ui.notices.filter((n) => n.kind !== 'research');
++      if (this.state.settings.notify === undefined && notifyPermission() !== 'unsupported' && notifyPermission() !== 'denied') this.ui.askNotify = true;
+       this.emit();
+     }
+   }
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index 198d5ea..6d5e04b 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -674,6 +674,41 @@ export const en = {
+   'ui.fuelUse': 'Burns',
+   'ui.fuelFull': 'Fuel stock is full, so the belt waits until the next lump burns. Got spare coal? Link the drill to the HQ or a warehouse too — it sends every other lump there.',
+   'news.6': 'Coal plants now burn 24 coal/min (was 12), about what one drill digs, so coal belts keep flowing. New belts also detour around ore — tap "Tidy belts" to reroute old ones.',
++  // ---- v1.3 notices, notifications, warehouse
++  'notify.researchTitle': 'Research complete',
++  'notify.researchBody': '{name} is done — your lab is free for the next one.',
++  'notify.researchTab': '✓ Research done',
++  'notify.contractTitle': 'Contract ends in 5 minutes',
++  'notify.contractBody': 'Still {n} {item} to go.',
++  'notify.contractTab': '⚠ Contract ending',
++  'notify.ask': 'Get a notification when research finishes while you are in another tab?',
++  'notify.yes': 'Turn on',
++  'notify.no': 'No thanks',
++  'notify.setting': 'Notifications in other tabs',
++  'notify.blocked': 'Notifications are blocked in this browser — allow them in the site settings first.',
++  'notify.blockedShort': 'blocked by the browser',
++  'notice.researchDone': 'Research complete',
++  'notice.unlocked': 'Unlocked:',
++  'notice.researchNext': 'Research next',
++  'notice.openResearch': 'Open research',
++  'notice.availableN': '{n} ready to start',
++  'notice.contractDone': 'Contract complete',
++  'notice.newContracts': 'New contracts',
++  'notice.zoneLicence': '{zone} licence',
++  'notice.labIdle': 'The lab is idle — start the next research',
++  'notice.researchNextShort': 'Research',
++  'wh.stock': 'Stock · keep',
++  'wh.less': 'Keep fewer',
++  'wh.more': 'Keep more',
++  'wh.keepAll': 'all',
++  'wh.keepHint': 'The number on the right stays in the warehouse; only the extra goes out on belts. Pick what each outgoing belt carries in the belt list below.',
++  'wh.sendWhat': 'What this belt carries',
++  'wh.auto': 'Auto (anything)',
++  'err.notWarehouse': 'Only warehouses can do that',
++  'err.cantCarry': 'The destination does not take that item',
++  'news.7': 'Finished research now shows a card with what it unlocked and a "Research next" button, and the lab chip at the top glows when the lab is idle.',
++  'news.8': 'Get notified in another tab when research finishes or a contract has 5 minutes left — turn it on in Settings.',
++  'news.9': 'Warehouses can sort: choose what each outgoing belt carries, and keep a stock of each item so only the extra is sent on.',
+ };
+ 
+ export type Dict = Record<keyof typeof en, string>;
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index 3511ef9..04bf395 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -676,4 +676,39 @@ export const th: Dict = {
+   'ui.fuelUse': 'ใช้เชื้อเพลิง',
+   'ui.fuelFull': 'เชื้อเพลิงสำรองเต็มแล้ว สายพานจะรอจนกว่าจะเผาก้อนถัดไป ถ้าถ่านเหลือ ลองต่อเครื่องขุดไปสำนักงานใหญ่หรือโกดังอีกเส้น ถ่านจะถูกแบ่งส่งสลับกัน',
+   'news.6': 'โรงไฟฟ้าถ่านหินเผาถ่าน 24 ก้อน/นาที (เดิม 12) ใกล้เคียงกับเครื่องขุด 1 เครื่อง สายพานถ่านจึงไม่ค้าง และสายพานจะอ้อมช่องแร่มากขึ้น กด "จัดสายพาน" เพื่อให้สายพานเดิมเดินเส้นใหม่',
++  // ---- v1.3 notices, notifications, warehouse
++  'notify.researchTitle': 'วิจัยเสร็จแล้ว',
++  'notify.researchBody': '{name} เสร็จแล้ว ห้องวิจัยว่าง เริ่มหัวข้อถัดไปได้เลย',
++  'notify.researchTab': '✓ วิจัยเสร็จ',
++  'notify.contractTitle': 'สัญญาเหลือเวลา 5 นาที',
++  'notify.contractBody': 'ยังต้องส่ง{item}อีก {n} ชิ้น',
++  'notify.contractTab': '⚠ สัญญาใกล้หมดเวลา',
++  'notify.ask': 'ให้แจ้งเตือนเมื่อวิจัยเสร็จ ตอนที่คุณเปิดแท็บอื่นอยู่ไหม?',
++  'notify.yes': 'เปิดแจ้งเตือน',
++  'notify.no': 'ไม่ต้อง',
++  'notify.setting': 'แจ้งเตือนตอนอยู่แท็บอื่น',
++  'notify.blocked': 'เบราว์เซอร์บล็อกการแจ้งเตือนอยู่ เปิดอนุญาตในการตั้งค่าเว็บไซต์ก่อน',
++  'notify.blockedShort': 'เบราว์เซอร์บล็อกอยู่',
++  'notice.researchDone': 'วิจัยเสร็จ',
++  'notice.unlocked': 'ปลดล็อก:',
++  'notice.researchNext': 'วิจัยต่อ',
++  'notice.openResearch': 'เปิดหน้าวิจัย',
++  'notice.availableN': 'พร้อมวิจัย {n} หัวข้อ',
++  'notice.contractDone': 'สัญญาสำเร็จ',
++  'notice.newContracts': 'ดูสัญญาใหม่',
++  'notice.zoneLicence': 'ใบอนุญาต{zone}',
++  'notice.labIdle': 'ห้องวิจัยว่าง เริ่มหัวข้อถัดไปได้',
++  'notice.researchNextShort': 'วิจัยต่อ',
++  'wh.stock': 'สินค้าในโกดัง · เก็บสำรอง',
++  'wh.less': 'เก็บน้อยลง',
++  'wh.more': 'เก็บมากขึ้น',
++  'wh.keepAll': 'ทั้งหมด',
++  'wh.keepHint': 'ตัวเลขด้านขวาคือจำนวนที่เก็บไว้ในโกดัง ส่งออกเฉพาะส่วนที่เกิน เลือกว่าสายพานขาออกแต่ละเส้นส่งอะไรได้ในรายการสายพานด้านล่าง',
++  'wh.sendWhat': 'สายพานเส้นนี้ส่งอะไร',
++  'wh.auto': 'อัตโนมัติ (ทุกอย่าง)',
++  'err.notWarehouse': 'ทำได้เฉพาะโกดัง',
++  'err.cantCarry': 'ปลายทางไม่รับสินค้านี้',
++  'news.7': 'งานวิจัยที่เสร็จจะขึ้นเป็นการ์ด บอกสิ่งที่ปลดล็อก พร้อมปุ่ม "วิจัยต่อ" และป้ายบนแถบด้านบนจะกระพริบเมื่อห้องวิจัยว่าง',
++  'news.8': 'แจ้งเตือนตอนเปิดแท็บอื่น เมื่อวิจัยเสร็จหรือสัญญาเหลือเวลา 5 นาที เปิดได้ในหน้าตั้งค่า',
++  'news.9': 'โกดังคัดแยกได้แล้ว: เลือกว่าสายพานแต่ละเส้นส่งสินค้าอะไร และตั้งจำนวนเก็บสำรองแต่ละชนิด ส่งออกเฉพาะส่วนที่เกิน',
+ };
+diff --git a/src/notify.ts b/src/notify.ts
+new file mode 100644
+index 0000000..26f6709
+--- /dev/null
++++ b/src/notify.ts
+@@ -0,0 +1,90 @@
++/**
++ * Browser notifications and the tab title while the game sits in a background
++ * tab. Uses a tiny service worker when there is one (Android Chrome only shows
++ * notifications through a service worker); plain `Notification` otherwise.
++ */
++
++export function notifySupported(): boolean {
++  return typeof window !== 'undefined' && 'Notification' in window && window.isSecureContext;
++}
++
++export function notifyPermission(): NotificationPermission | 'unsupported' {
++  return notifySupported() ? Notification.permission : 'unsupported';
++}
++
++let reg: Promise<ServiceWorkerRegistration | null> | null = null;
++function registration(): Promise<ServiceWorkerRegistration | null> {
++  if (!reg) {
++    reg =
++      'serviceWorker' in navigator && location.protocol.startsWith('http')
++        ? navigator.serviceWorker.register('/notify-sw.js').then(
++            () => navigator.serviceWorker.ready,
++            () => null,
++          )
++        : Promise.resolve(null);
++  }
++  return reg;
++}
++
++/** asks the browser; true when allowed */
++export async function requestNotify(): Promise<boolean> {
++  if (!notifySupported()) return false;
++  const p = Notification.permission === 'default' ? await Notification.requestPermission() : Notification.permission;
++  if (p === 'granted') void registration();
++  return p === 'granted';
++}
++
++export async function showNotification(title: string, body: string, tag: string) {
++  if (notifyPermission() !== 'granted') return;
++  const opts: NotificationOptions = { body, tag };
++  const r = await registration();
++  if (r) {
++    await r.showNotification(title, opts);
++    return;
++  }
++  try {
++    const n = new Notification(title, opts);
++    n.onclick = () => {
++      window.focus();
++      n.close();
++    };
++  } catch {
++    /* this browser only allows notifications from a service worker */
++  }
++}
++
++// ---------------------------------------------------------------- scheduling while hidden
++
++let timers: number[] = [];
++let baseTitle: string | null = null;
++
++export interface Scheduled {
++  delayMs: number;
++  title: string;
++  body: string;
++  tag: string;
++  /** short text for the tab title, e.g. "✓ Research done" */
++  tab: string;
++  /** also show a browser notification */
++  notify: boolean;
++}
++
++export function scheduleWhileHidden(list: Scheduled[]) {
++  cancelScheduled();
++  baseTitle = document.title;
++  for (const a of list) {
++    timers.push(
++      window.setTimeout(() => {
++        document.title = `${a.tab} · ${baseTitle}`;
++        if (a.notify) void showNotification(a.title, a.body, a.tag);
++      }, a.delayMs),
++    );
++  }
++}
++
++export function cancelScheduled() {
++  for (const t of timers) clearTimeout(t);
++  timers = [];
++  if (baseTitle !== null) document.title = baseTitle;
++  baseTitle = null;
++}
+diff --git a/src/render/renderer.ts b/src/render/renderer.ts
+index 1cd90a7..753e9c8 100644
+--- a/src/render/renderer.ts
++++ b/src/render/renderer.ts
+@@ -19,7 +19,7 @@ import { plotForSale, plotPrice } from '../core/land';
+ import { extractAt, isExtractor, zoneLicensed, zoneOfPlot, zoneOfTile } from '../core/zones';
+ import { plotsPerRow } from '../core/state';
+ import { gradeAt } from '../core/veins';
+-import { canPlace, linkCarriesIn } from '../core/actions';
++import { beltCarries, canPlace } from '../core/actions';
+ import { pointAt } from '../core/pathfind';
+ import { getBuilding, hqPosition, idx, isUnlocked } from '../core/state';
+ import type { Belt, Building } from '../core/types';
+@@ -441,7 +441,7 @@ export class Renderer {
+     const from = getBuilding(s, belt.from);
+     const to = getBuilding(s, belt.to);
+     if (!from || !to) return C.beltEdge;
+-    const carries = linkCarriesIn(s, from, to);
++    const carries = beltCarries(s, belt);
+     if (!carries.length) return C.bad;
+     if (from.type === 'warehouse' && carries.length > 3) return C.beltEdge; // mixed cargo
+     return ITEMS[carries[0]].color;
+diff --git a/src/ui/App.tsx b/src/ui/App.tsx
+index 3772924..fd66a6c 100644
+--- a/src/ui/App.tsx
++++ b/src/ui/App.tsx
+@@ -4,7 +4,7 @@ import { hasStoredSession, onlineConfigured } from '../online/config';
+ import { Renderer } from '../render/renderer';
+ import { BuildDrawer } from './BuildDrawer';
+ import { GameContext } from './hooks';
+-import { BottomBar, MapTools, QuestCard, QuestDoneBanner, Toasts, TopBar } from './Hud';
++import { BottomBar, MapTools, Notices, QuestCard, QuestDoneBanner, Toasts, TopBar } from './Hud';
+ import { Inspector } from './Inspector';
+ import { OfflineModal, SettingsPanel, StatsPanel, UpgradesPanel } from './Panels';
+ import { ContractsPanel, DailyPanel, FleetPanel, MarketsPanel, MenuSheet, PlotSheet, ExpansionPanel, ResearchPanel } from './MetaPanels';
+@@ -63,6 +63,7 @@ export function App() {
+           <QuestCard />
+         </div>
+         <QuestDoneBanner />
++        <Notices />
+         <Toasts />
+         <Inspector />
+         <PlotSheet />
+diff --git a/src/ui/Hud.tsx b/src/ui/Hud.tsx
+index 63ba757..0c6216f 100644
+--- a/src/ui/Hud.tsx
++++ b/src/ui/Hud.tsx
+@@ -1,5 +1,8 @@
+ import { BUILDINGS } from '../config/balance';
+-import { QUESTS, currentQuest, currentQuestIndex } from '../core/quests';
++import { QUESTS, currentQuest, currentQuestIndex, metaUnlocked } from '../core/quests';
++import { availableResearchCount, unlocksOf, type Unlock } from '../core/alerts';
++import { researchEffects } from './MetaPanels';
++import type { Notice } from '../game';
+ import { incomePerMinute } from '../core/sim';
+ import { boostActive } from '../core/economy';
+ import { moveFee } from '../core/actions';
+@@ -53,10 +56,17 @@ export function TopBar() {
+             {game.online!.onlineCount}
+           </span>
+         )}
+-        {s.research.active && (
++        {s.research.active ? (
+           <button className="chip mono" onClick={() => game.openPanel('research')}>
+             <NavIcon panel="research" size={14} /> {fmtClock(s.research.active.remaining)}
+           </button>
++        ) : (
++          metaUnlocked(s) &&
++          availableResearchCount(s) > 0 && (
++            <button className="chip research-idle" onClick={() => game.openPanel('research')} title={t('notice.labIdle')}>
++              <NavIcon panel="research" size={14} /> ✓ {t('notice.researchNextShort')}
++            </button>
++          )
+         )}
+         {s.veins.length > 0 && (
+           <button className="chip vein" onClick={() => game.focusVein()} title={t('ui.richVein')}>
+@@ -275,3 +285,101 @@ export function MapTools() {
+     </div>
+   );
+ }
++
++/** cards that stay until closed: research done, contract done, and the notification offer */
++export function Notices() {
++  const game = useGame();
++  const t = useT();
++  const { notices, askNotify } = game.ui;
++  if (!notices.length && !askNotify) return null;
++  const s = game.state;
++  const unlockLabel = (u: Unlock) =>
++    u.kind === 'building'
++      ? t(`b.${u.id}`)
++      : u.kind === 'item'
++        ? t(`item.${u.id}`)
++        : u.kind === 'zone'
++          ? t('notice.zoneLicence', { zone: t(`zone.${u.id}`) })
++          : u.kind === 'city'
++            ? t(`city.${u.id}`)
++            : t(`veh.${u.id}`);
++  const card = (n: Notice) => {
++    const close = (
++      <button className="icon-btn small" onClick={() => game.dismissNotice(n.id)} aria-label={t('ui.close')}>
++        ✕
++      </button>
++    );
++    if (n.kind === 'research') {
++      const opens = [...unlocksOf(n.research).map(unlockLabel), ...researchEffects(n.research, t)];
++      const avail = availableResearchCount(s);
++      return (
++        <div key={n.id} className="notice research" role="status">
++          <div className="notice-head">
++            <NavIcon panel="research" size={16} />
++            <span className="notice-kind">{t('notice.researchDone')}</span>
++            {close}
++          </div>
++          <strong className="notice-title">{t(`r.${n.research}.t`)}</strong>
++          {opens.length > 0 && (
++            <p className="small">
++              <span className="dim">{t('notice.unlocked')}</span> {opens.join(' · ')}
++            </p>
++          )}
++          <div className="notice-actions">
++            <button
++              className="btn small primary"
++              onClick={() => {
++                game.dismissNotice(n.id);
++                if (game.ui.panel !== 'research') game.openPanel('research');
++              }}
++            >
++              {avail > 0 ? t('notice.researchNext') : t('notice.openResearch')} →
++            </button>
++            {avail > 0 && <span className="small dim">{t('notice.availableN', { n: avail })}</span>}
++          </div>
++        </div>
++      );
++    }
++    return (
++      <div key={n.id} className="notice contract" role="status">
++        <div className="notice-head">
++          <NavIcon panel="contracts" size={16} />
++          <span className="notice-kind">{t('notice.contractDone')}</span>
++          {close}
++        </div>
++        <strong className="notice-title">
++          {t(`item.${n.item}`)} · <span className="mono good">+{fmtMoney(n.reward)}</span>
++        </strong>
++        <div className="notice-actions">
++          <button
++            className="btn small"
++            onClick={() => {
++              game.dismissNotice(n.id);
++              if (game.ui.panel !== 'contracts') game.openPanel('contracts');
++            }}
++          >
++            {t('notice.newContracts')} →
++          </button>
++        </div>
++      </div>
++    );
++  };
++  return (
++    <div className="notices">
++      {askNotify && (
++        <div className="notice ask" role="dialog">
++          <p className="small">{t('notify.ask')}</p>
++          <div className="notice-actions">
++            <button className="btn small primary" onClick={() => void game.answerNotify(true)}>
++              {t('notify.yes')}
++            </button>
++            <button className="btn small ghost" onClick={() => void game.answerNotify(false)}>
++              {t('notify.no')}
++            </button>
++          </div>
++        </div>
++      )}
++      {notices.map(card)}
++    </div>
++  );
++}
+diff --git a/src/ui/Inspector.tsx b/src/ui/Inspector.tsx
+index 15230f7..dcfa099 100644
+--- a/src/ui/Inspector.tsx
++++ b/src/ui/Inspector.tsx
+@@ -14,10 +14,10 @@ import {
+ } from '../config/balance';
+ import { globalSpeed, powerMult, recipeUnlocked } from '../core/economy';
+ import { tileMult } from '../core/veins';
+-import { FUEL, isCrafter } from '../core/sim';
++import { FUEL, acceptsType, isCrafter } from '../core/sim';
+ import { extractedItem } from '../core/zones';
+ import { OreInfo } from './TileSheet';
+-import { freeMoveLeft, isUpgradable, linkCarriesIn, moveFee, totalInvested } from '../core/actions';
++import { beltCarries, freeMoveLeft, isUpgradable, moveFee, totalInvested } from '../core/actions';
+ import { getBuilding, invTotal } from '../core/state';
+ import { fmtClock, fmtMoney, fmtNum } from '../i18n';
+ import { useGame, useHighlight, useT } from './hooks';
+@@ -164,7 +164,49 @@ export function Inspector() {
+         </div>
+       </>
+     );
+-  } else if (b.type === 'warehouse' || b.type === 'dock') {
++  } else if (b.type === 'warehouse') {
++    const cap = storageCapacity(b.type, b.level);
++    const total = invTotal(b.input);
++    // everything stocked, plus items with a reserve set but none in stock right now
++    const items = [...new Set([...(Object.keys(b.input) as ItemId[]).filter((i) => (b.input[i] ?? 0) >= 1), ...(Object.keys(b.reserve ?? {}) as ItemId[])])];
++    body = (
++      <>
++        <div className="kv">
++          <span>{t('ui.capacity')}</span>
++          <span className="mono">
++            {Math.floor(total)} / {cap}
++          </span>
++        </div>
++        <div className="section-label">{t('wh.stock')}</div>
++        {items.length === 0 ? (
++          <p className="small dim">{t('ui.empty')}</p>
++        ) : (
++          <ul className="wh-stock">
++            {items.map((i) => {
++              const r = b.reserve?.[i] ?? 0;
++              return (
++                <li key={i}>
++                  <ItemIcon item={i} size={18} />
++                  <span className="wh-name">{t(`item.${i}`)}</span>
++                  <span className="mono wh-have">{Math.floor(b.input[i] ?? 0)}</span>
++                  <span className="wh-keep">
++                    <button className="icon-btn small" disabled={r === 0} onClick={() => game.stepReserve(b.id, i, -1)} aria-label={t('wh.less')}>
++                      −
++                    </button>
++                    <span className={`mono ${r ? 'warn' : 'dim'}`}>{r < 0 ? t('wh.keepAll') : r || '–'}</span>
++                    <button className="icon-btn small" disabled={r < 0} onClick={() => game.stepReserve(b.id, i, 1)} aria-label={t('wh.more')}>
++                      +
++                    </button>
++                  </span>
++                </li>
++              );
++            })}
++          </ul>
++        )}
++        <p className="small dim">{t('wh.keepHint')}</p>
++      </>
++    );
++  } else if (b.type === 'dock') {
+     const cap = storageCapacity(b.type, b.level);
+     const total = invTotal(b.input);
+     body = (
+@@ -232,15 +274,41 @@ export function Inspector() {
+   const beltRow = (beltId: number, otherId: number, dir: 'out' | 'in') => {
+     const other = getBuilding(s, otherId);
+     if (!other) return null;
+-    const src = dir === 'out' ? b : other;
+     const dst = dir === 'out' ? other : b;
+-    const carries = linkCarriesIn(s, src, dst);
++    const belt = s.belts.find((x) => x.id === beltId)!;
++    const carries = beltCarries(s, belt);
++    // a warehouse's outgoing belts can be set to one item: offer what's in stock or arriving, that the target takes
++    const sorting = dir === 'out' && b.type === 'warehouse';
++    const choices = sorting
++      ? [
++          ...new Set<ItemId>([
++            ...(Object.keys(b.input) as ItemId[]),
++            ...ins.flatMap((x) => beltCarries(s, x)),
++            ...(belt.filter ? [belt.filter] : []),
++          ]),
++        ].filter((i) => acceptsType(dst, i))
++      : [];
+     return (
+       <li key={beltId}>
+         <span className="belt-dir">{dir === 'out' ? '→' : '←'}</span>
+         <button className="belt-target" onClick={() => game.select(other.id)}>
+           {t(`b.${other.type}`)}
+         </button>
++        {sorting ? (
++          <select
++            className="belt-filter"
++            value={belt.filter ?? ''}
++            onChange={(e) => game.setBeltFilter(beltId, (e.target.value || null) as ItemId | null)}
++            aria-label={t('wh.sendWhat')}
++          >
++            <option value="">{t('wh.auto')}</option>
++            {choices.map((i) => (
++              <option key={i} value={i}>
++                {t(`item.${i}`)}
++              </option>
++            ))}
++          </select>
++        ) : null}
+         <span className="belt-carries">
+           {carries.length ? carries.slice(0, 3).map((i) => <ItemIcon key={i} item={i} />) : <span className="bad small">✕</span>}
+         </span>
+diff --git a/src/ui/MetaPanels.tsx b/src/ui/MetaPanels.tsx
+index 1daaed6..ddc7030 100644
+--- a/src/ui/MetaPanels.tsx
++++ b/src/ui/MetaPanels.tsx
+@@ -40,6 +40,18 @@ const TIERS = ['ui.tierA', 'ui.tierB', 'ui.tierC', 'ui.tierD', 'ui.tierE', 'ui.t
+ 
+ type ResearchTab = 'available' | 'locked' | 'done';
+ 
++/** "machines +10 %" etc. for a research */
++export function researchEffects(id: ResearchId, t: (k: string, p?: Record<string, string | number>) => string): string[] {
++  const def = RESEARCH[id];
++  const e: string[] = [];
++  if (def.speed) e.push(t('ui.effectSpeed', { pct: Math.round(def.speed * 100) }));
++  if (def.powerSave) e.push(t('ui.effectPower', { pct: Math.round(def.powerSave * 100) }));
++  if (def.beltMax) e.push(t('ui.effectBelt', { n: def.beltMax }));
++  if (def.capacity) e.push(t('ui.effectCapacity', { pct: Math.round(def.capacity * 100) }));
++  if (def.moveDiscount) e.push(t('ui.effectMove', { pct: Math.round(def.moveDiscount * 100) }));
++  return e;
++}
++
+ /** research that lists `id` among its requirements */
+ const leadsTo = (id: ResearchId) => (Object.keys(RESEARCH) as ResearchId[]).filter((r) => RESEARCH[r].requires.includes(id));
+ 
+@@ -72,16 +84,7 @@ export function ResearchPanel() {
+     setTab(st === 'available' ? 'available' : st === 'done' ? 'done' : 'locked');
+     setFlash(id);
+   };
+-  const effectsOf = (id: ResearchId) => {
+-    const def = RESEARCH[id];
+-    const e: string[] = [];
+-    if (def.speed) e.push(t('ui.effectSpeed', { pct: Math.round(def.speed * 100) }));
+-    if (def.powerSave) e.push(t('ui.effectPower', { pct: Math.round(def.powerSave * 100) }));
+-    if (def.beltMax) e.push(t('ui.effectBelt', { n: def.beltMax }));
+-    if (def.capacity) e.push(t('ui.effectCapacity', { pct: Math.round(def.capacity * 100) }));
+-    if (def.moveDiscount) e.push(t('ui.effectMove', { pct: Math.round(def.moveDiscount * 100) }));
+-    return e;
+-  };
++  const effectsOf = (id: ResearchId) => researchEffects(id, t);
+   const chips = (list: ResearchId[]) =>
+     list.map((r) => (
+       <button key={r} className="link-btn chip-link" onClick={() => goTo(r)}>
+diff --git a/src/ui/Panels.tsx b/src/ui/Panels.tsx
+index ddaad37..a06fc12 100644
+--- a/src/ui/Panels.tsx
++++ b/src/ui/Panels.tsx
+@@ -1,3 +1,4 @@
++import { notifyPermission } from '../notify';
+ import { useState } from 'react';
+ import { BALANCE, ITEMS, beltSpeed, beltUpgradeCost, type ItemId } from '../config/balance';
+ import { beltMaxLevel } from '../core/economy';
+@@ -130,6 +131,22 @@ export function SettingsPanel() {
+           </button>
+         </div>
+       </div>
++      {notifyPermission() !== 'unsupported' && (
++        <div className="setting">
++          <span>
++            {t('notify.setting')}
++            {notifyPermission() === 'denied' && <span className="small warn"> · {t('notify.blockedShort')}</span>}
++          </span>
++          <div className="seg">
++            <button className={game.state.settings.notify === 'on' ? 'active' : ''} onClick={() => void game.setNotify(true)}>
++              {t('ui.on')}
++            </button>
++            <button className={game.state.settings.notify !== 'on' ? 'active' : ''} onClick={() => void game.setNotify(false)}>
++              {t('ui.off')}
++            </button>
++          </div>
++        </div>
++      )}
+       <div className="setting">
+         <span>{t('intro.howToPlay')}</span>
+         <button className="btn small" onClick={() => game.openIntro()}>
+diff --git a/src/ui/WhatsNew.tsx b/src/ui/WhatsNew.tsx
+index ee29d39..5e8c92e 100644
+--- a/src/ui/WhatsNew.tsx
++++ b/src/ui/WhatsNew.tsx
+@@ -13,6 +13,9 @@ const NOTES: { key: string; version: string }[] = [
+   { key: 'news.4', version: '1.2.0' },
+   { key: 'news.5', version: '1.2.1' },
+   { key: 'news.6', version: '1.2.1' },
++  { key: 'news.7', version: '1.3.0' },
++  { key: 'news.8', version: '1.3.0' },
++  { key: 'news.9', version: '1.3.0' },
+ ];
+ 
+ function newer(a: string, b: string | undefined): boolean {
+diff --git a/src/ui/styles.css b/src/ui/styles.css
+index e8c31ee..4a9feca 100644
+--- a/src/ui/styles.css
++++ b/src/ui/styles.css
+@@ -1974,3 +1974,137 @@ select:focus-visible {
+   align-items: center;
+   gap: 8px;
+ }
++
++/* notices: cards that stay until closed */
++.notices {
++  position: absolute;
++  top: calc(84px + var(--safe-top));
++  left: 50%;
++  transform: translateX(-50%);
++  z-index: 31;
++  width: min(420px, calc(100% - 24px));
++  display: flex;
++  flex-direction: column;
++  gap: 8px;
++  pointer-events: none;
++}
++.notice {
++  pointer-events: auto;
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++  padding: 10px 12px;
++  background: var(--panel);
++  border: 1px solid var(--edge);
++  border-left: 4px solid var(--blue);
++  border-radius: var(--radius);
++  box-shadow: 0 8px 28px rgba(0, 0, 0, 0.45);
++  animation: notice-in 0.3s cubic-bezier(0.2, 1.3, 0.4, 1);
++}
++@keyframes notice-in {
++  from {
++    opacity: 0;
++    transform: translateY(-8px) scale(0.96);
++  }
++}
++.notice.research {
++  border-left-color: var(--green);
++}
++.notice.contract {
++  border-left-color: var(--amber);
++}
++.notice p {
++  margin: 0;
++  line-height: 1.4;
++}
++.notice-head {
++  display: flex;
++  align-items: center;
++  gap: 6px;
++}
++.notice-kind {
++  flex: 1;
++  font-size: 12px;
++  font-weight: 700;
++  letter-spacing: 0.02em;
++  color: var(--dim);
++  text-transform: uppercase;
++}
++.notice.research .notice-kind {
++  color: var(--green);
++}
++.notice.contract .notice-kind {
++  color: var(--amber);
++}
++.notice-title {
++  font-size: 16px;
++}
++.notice-actions {
++  display: flex;
++  align-items: center;
++  gap: 10px;
++  margin-top: 4px;
++}
++.chip.research-idle {
++  border-color: var(--green);
++  color: var(--green);
++  animation: idle-pulse 1.6s ease-in-out infinite;
++}
++@keyframes idle-pulse {
++  50% {
++    box-shadow: 0 0 0 4px rgba(61, 220, 151, 0.18);
++  }
++}
++@media (prefers-reduced-motion: reduce) {
++  .chip.research-idle {
++    animation: none;
++  }
++}
++
++/* warehouse stock & reserve */
++.wh-stock {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 4px;
++}
++.wh-stock li {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++  padding: 4px 6px;
++  border-radius: 8px;
++  background: var(--panel-2);
++}
++.wh-name {
++  flex: 1;
++  min-width: 0;
++  overflow: hidden;
++  text-overflow: ellipsis;
++  white-space: nowrap;
++}
++.wh-have {
++  min-width: 36px;
++  text-align: right;
++}
++.wh-keep {
++  display: flex;
++  align-items: center;
++  gap: 4px;
++}
++.wh-keep .mono {
++  min-width: 52px;
++  text-align: center;
++}
++.belt-filter {
++  max-width: 140px;
++  padding: 4px 6px;
++  border-radius: 8px;
++  border: 1px solid var(--edge-2);
++  background: var(--panel-2);
++  color: var(--text);
++  font: inherit;
++  font-size: 13px;
++}
+diff --git a/tests/intro.test.ts b/tests/intro.test.ts
+index f4cb60e..f69ee17 100644
+--- a/tests/intro.test.ts
++++ b/tests/intro.test.ts
+@@ -26,10 +26,11 @@ describe('intro popup flag', () => {
+ describe("what's new notes", () => {
+   it('shows every note newer than the version the player last saw', async () => {
+     const { notesFor } = await import('../src/ui/WhatsNew');
+-    expect(notesFor('1.1.1')).toEqual(['news.1', 'news.2', 'news.3', 'news.4', 'news.5', 'news.6']);
+-    expect(notesFor('1.2.0')).toEqual(['news.5', 'news.6']);
+-    expect(notesFor('1.2.1')).toEqual([]);
+-    expect(notesFor(undefined).length).toBe(6);
++    expect(notesFor('1.1.1')).toEqual(['news.1', 'news.2', 'news.3', 'news.4', 'news.5', 'news.6', 'news.7', 'news.8', 'news.9']);
++    expect(notesFor('1.2.0')).toEqual(['news.5', 'news.6', 'news.7', 'news.8', 'news.9']);
++    expect(notesFor('1.2.1')).toEqual(['news.7', 'news.8', 'news.9']);
++    expect(notesFor('1.3.0')).toEqual([]);
++    expect(notesFor(undefined).length).toBe(9);
+     expect(notesFor('1.10.0')).toEqual([]); // compared as numbers, not text
+   });
+ });
+diff --git a/tests/warehouse.test.ts b/tests/warehouse.test.ts
+new file mode 100644
+index 0000000..27c8e47
+--- /dev/null
++++ b/tests/warehouse.test.ts
+@@ -0,0 +1,140 @@
++import { describe, expect, it } from 'vitest';
++import { BALANCE } from '../src/config/balance';
++import { RESERVE_STEPS, beltCarries, createLink, placeBuilding, setBeltFilter, stepReserve } from '../src/core/actions';
++import { backgroundAlerts, CONTRACT_WARN_SECONDS, unlocksOf } from '../src/core/alerts';
++import { buyPerk } from '../src/core/prestige';
++import { startResearch } from '../src/core/research';
++import { deserialize, serialize } from '../src/core/save';
++import { tick } from '../src/core/sim';
++import { newGame } from '../src/core/state';
++import type { GameState } from '../src/core/types';
++import { legacyOffset } from '../src/core/worldgen';
++
++const O = legacyOffset();
++const run = (s: GameState, seconds: number) => {
++  for (let t = 0; t < seconds; t += BALANCE.tickSeconds) tick(s, BALANCE.tickSeconds);
++};
++
++/** a warehouse full of iron bars and copper bars, with two outgoing belts to two warehouses */
++function sorter() {
++  const s = newGame(11);
++  s.money = 1e6;
++  s.world.deposits = s.world.deposits.map(() => null);
++  const w = placeBuilding(s, 'warehouse', O + 12, O + 12);
++  const a = placeBuilding(s, 'warehouse', O + 12, O + 8);
++  const b = placeBuilding(s, 'warehouse', O + 12, O + 16);
++  if (!w.ok || !a.ok || !b.ok) throw new Error('place');
++  w.value.input = { iron_bar: 60, copper_bar: 60 };
++  const la = createLink(s, w.value.id, a.value.id);
++  const lb = createLink(s, w.value.id, b.value.id);
++  if (!la.ok || !lb.ok) throw new Error('link');
++  const beltTo = (id: number) => s.belts.find((x) => x.to === id)!;
++  return { s, w: w.value, a: a.value, b: b.value, beltA: beltTo(a.value.id), beltB: beltTo(b.value.id) };
++}
++
++describe('warehouse sorting', () => {
++  it('without filters, everything flows out as before', () => {
++    const { s, a, b } = sorter();
++    run(s, 30);
++    const got = (i: 'iron_bar' | 'copper_bar') => (a.input[i] ?? 0) + (b.input[i] ?? 0);
++    expect(got('iron_bar')).toBeGreaterThan(5);
++    expect(got('copper_bar')).toBeGreaterThan(5);
++  });
++
++  it('a filtered belt carries only its item', () => {
++    const { s, a, b, beltA, beltB } = sorter();
++    expect(setBeltFilter(s, beltA.id, 'iron_bar').ok).toBe(true);
++    expect(setBeltFilter(s, beltB.id, 'copper_bar').ok).toBe(true);
++    expect(beltCarries(s, beltA)).toEqual(['iron_bar']);
++    run(s, 30);
++    expect(a.input.iron_bar ?? 0).toBeGreaterThan(5);
++    expect(a.input.copper_bar ?? 0).toBe(0);
++    expect(b.input.copper_bar ?? 0).toBeGreaterThan(5);
++    expect(b.input.iron_bar ?? 0).toBe(0);
++  });
++
++  it('a filter can be cleared, and survives a save', () => {
++    const { s, beltA } = sorter();
++    setBeltFilter(s, beltA.id, 'iron_bar');
++    expect(deserialize(serialize(s))!.belts.find((x) => x.id === beltA.id)!.filter).toBe('iron_bar');
++    expect(setBeltFilter(s, beltA.id, null).ok).toBe(true);
++    expect(beltA.filter).toBeUndefined();
++  });
++
++  it('only warehouse belts can be filtered, and only to items the target takes', () => {
++    const s = newGame(2);
++    s.money = 1e6;
++    s.world.deposits = s.world.deposits.map(() => null);
++    const f = placeBuilding(s, 'furnace', O + 12, O + 12);
++    const w = placeBuilding(s, 'warehouse', O + 14, O + 12);
++    if (!f.ok || !w.ok) throw new Error('place');
++    createLink(s, f.value.id, w.value.id);
++    createLink(s, w.value.id, f.value.id);
++    const fromFurnace = s.belts.find((x) => x.from === f.value.id)!;
++    const toFurnace = s.belts.find((x) => x.to === f.value.id)!;
++    expect(setBeltFilter(s, fromFurnace.id, 'iron_bar')).toEqual({ ok: false, reason: 'err.notWarehouse' });
++    expect(setBeltFilter(s, toFurnace.id, 'copper_bar')).toEqual({ ok: false, reason: 'err.cantCarry' }); // furnace makes iron bars from iron ore
++    expect(setBeltFilter(s, toFurnace.id, 'iron_ore').ok).toBe(true);
++  });
++});
++
++describe('warehouse reserve', () => {
++  it('keeps the reserve and sends only the extra', () => {
++    const { s, w, a, b } = sorter();
++    w.input = { iron_bar: 60 };
++    w.reserve = { iron_bar: 50 };
++    run(s, 60);
++    expect(w.input.iron_bar).toBe(50);
++    expect((a.input.iron_bar ?? 0) + (b.input.iron_bar ?? 0) + s.belts.reduce((n, x) => n + x.items.length, 0)).toBe(10);
++  });
++
++  it('"keep all" holds everything back', () => {
++    const { s, w } = sorter();
++    w.input = { iron_bar: 60 };
++    w.reserve = { iron_bar: -1 };
++    run(s, 30);
++    expect(w.input.iron_bar).toBe(60);
++  });
++
++  it('steps through the presets and back down to nothing', () => {
++    const { s, w } = sorter();
++    const seen: number[] = [];
++    for (let i = 0; i < RESERVE_STEPS.length + 2; i++) seen.push(stepReserve(s, w.id, 'coal', 1).ok ? (w.reserve?.coal ?? 0) : NaN);
++    expect(seen).toEqual([...RESERVE_STEPS.slice(1), -1, -1, -1]);
++    for (let i = 0; i < RESERVE_STEPS.length + 2; i++) stepReserve(s, w.id, 'coal', -1);
++    expect(w.reserve?.coal).toBeUndefined();
++  });
++});
++
++describe('background alerts', () => {
++  it('schedules the active research for when it finishes, faster with the R&D perk', () => {
++    const s = newGame(1);
++    s.money = 1e6;
++    expect(backgroundAlerts(s)).toEqual([]);
++    startResearch(s, 'r_trucks'); // 60 s
++    expect(backgroundAlerts(s)).toEqual([{ delayMs: 60_000, tag: 'research', kind: 'research', research: 'r_trucks' }]);
++    s.prestige.shares = 10;
++    buyPerk(s, 'p_research_speed');
++    expect(backgroundAlerts(s)[0].delayMs).toBeCloseTo(60_000 / 1.1, 3);
++  });
++
++  it('warns about unfinished contracts 5 minutes before they run out', () => {
++    const s = newGame(1);
++    s.contracts.active = [
++      { id: 1, item: 'iron_bar', qty: 50, progress: 20, reward: 900, duration: 1800, expiresAt: s.time + 1200 },
++      { id: 2, item: 'wire', qty: 30, progress: 30, reward: 500, duration: 1800, expiresAt: s.time + 1200 }, // already done
++      { id: 3, item: 'gear', qty: 10, progress: 0, reward: 200, duration: 1800, expiresAt: s.time + 120 }, // too late to warn
++    ];
++    expect(backgroundAlerts(s)).toEqual([{ delayMs: (1200 - CONTRACT_WARN_SECONDS) * 1000, tag: 'contract-1', kind: 'contract', item: 'iron_bar', left: 30 }]);
++  });
++
++  it('lists what a research unlocks', () => {
++    const u = unlocksOf('r_petroleum');
++    expect(u).toContainEqual({ kind: 'building', id: 'oil_pump' });
++    expect(u).toContainEqual({ kind: 'building', id: 'refinery' });
++    expect(u).toContainEqual({ kind: 'item', id: 'plastic' });
++    expect(u).toContainEqual({ kind: 'zone', id: 'desert' });
++    expect(unlocksOf('r_trucks')).toContainEqual({ kind: 'city', id: 'bangkok' });
++    expect(unlocksOf('r_automation_1')).toEqual([]); // an effect only
++  });
++});
