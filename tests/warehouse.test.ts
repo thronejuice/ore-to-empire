@@ -1,6 +1,6 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE } from '../src/config/balance';
-import { RESERVE_STEPS, beltCarries, createLink, placeBuilding, setBeltFilter, stepReserve } from '../src/core/actions';
+import { RESERVE_STEPS, beltCarries, createLink, placeBuilding, setBeltFilter, setReserve, warehouseLines } from '../src/core/actions';
 import { backgroundAlerts, CONTRACT_WARN_SECONDS, unlocksOf } from '../src/core/alerts';
 import { buyPerk } from '../src/core/prestige';
 import { startResearch } from '../src/core/research';
@@ -96,13 +96,56 @@ describe('warehouse reserve', () => {
     expect(w.input.iron_bar).toBe(60);
   });
 
-  it('steps through the presets and back down to nothing', () => {
+  it('is set straight to one of the presets, and 0 clears it', () => {
     const { s, w } = sorter();
-    const seen: number[] = [];
-    for (let i = 0; i < RESERVE_STEPS.length + 2; i++) seen.push(stepReserve(s, w.id, 'coal', 1).ok ? (w.reserve?.coal ?? 0) : NaN);
-    expect(seen).toEqual([...RESERVE_STEPS.slice(1), -1, -1, -1]);
-    for (let i = 0; i < RESERVE_STEPS.length + 2; i++) stepReserve(s, w.id, 'coal', -1);
-    expect(w.reserve?.coal).toBeUndefined();
+    for (const n of RESERVE_STEPS) {
+      expect(setReserve(s, w.id, 'coal', n).ok).toBe(true);
+      expect(w.reserve?.coal).toBe(n || undefined);
+    }
+    expect(setReserve(s, w.id, 'coal', 7)).toEqual({ ok: false, reason: 'err.badAmount' });
+  });
+});
+
+describe('warehouse item list', () => {
+  function chain() {
+    const s = newGame(11);
+    s.money = 1e6;
+    s.world.deposits = s.world.deposits.map(() => null);
+    s.world.deposits[(O + 10) * s.world.size + O + 10] = 'coal';
+    const m = placeBuilding(s, 'miner', O + 10, O + 10);
+    const w1 = placeBuilding(s, 'warehouse', O + 14, O + 10);
+    const w2 = placeBuilding(s, 'warehouse', O + 18, O + 10);
+    if (!m.ok || !w1.ok || !w2.ok) throw new Error('place');
+    createLink(s, m.value.id, w1.value.id);
+    createLink(s, w1.value.id, w2.value.id);
+    return { s, w1: w1.value, w2: w2.value };
+  }
+
+  it('lists what incoming belts will bring before anything arrives', () => {
+    const { s, w1 } = chain();
+    expect(warehouseLines(s, w1)).toEqual([{ item: 'coal', have: 0, keep: 0, from: ['miner'] }]);
+  });
+
+  it('follows a warehouse belt back to what feeds that warehouse', () => {
+    const { s, w1, w2 } = chain();
+    w1.input = { iron_bar: 5 };
+    const items = warehouseLines(s, w2).map((l) => l.item);
+    expect(items.sort()).toEqual(['coal', 'iron_bar']);
+    // a filter on the belt narrows it to that one item
+    setBeltFilter(s, s.belts.find((b) => b.from === w1.id)!.id, 'iron_bar');
+    expect(warehouseLines(s, w2).map((l) => l.item)).toEqual(['iron_bar']);
+  });
+
+  it('copes with warehouses feeding each other in a loop', () => {
+    const { s, w1, w2 } = chain();
+    createLink(s, w2.id, w1.id);
+    expect(warehouseLines(s, w1).map((l) => l.item)).toEqual(['coal']);
+  });
+
+  it('keeps showing items with a reserve after they run out', () => {
+    const { s, w1 } = chain();
+    setReserve(s, w1.id, 'gear', 50);
+    expect(warehouseLines(s, w1).find((l) => l.item === 'gear')).toEqual({ item: 'gear', have: 0, keep: 50, from: [] });
   });
 });
 

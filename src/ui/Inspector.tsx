@@ -17,7 +17,7 @@ import { tileMult } from '../core/veins';
 import { FUEL, acceptsType, isCrafter } from '../core/sim';
 import { extractedItem } from '../core/zones';
 import { OreInfo } from './TileSheet';
-import { beltCarries, freeMoveLeft, isUpgradable, moveFee, totalInvested } from '../core/actions';
+import { RESERVE_STEPS, beltCarries, beltSupply, freeMoveLeft, isUpgradable, moveFee, totalInvested, warehouseLines } from '../core/actions';
 import { getBuilding, invTotal } from '../core/state';
 import { fmtClock, fmtMoney, fmtNum } from '../i18n';
 import { useGame, useHighlight, useT } from './hooks';
@@ -29,10 +29,12 @@ export function Inspector() {
   const b = game.selectedBuilding();
   const [confirm, setConfirm] = useState(false);
   const [showRecipes, setShowRecipes] = useState(false);
+  const [keepOpen, setKeepOpen] = useState<ItemId | null>(null);
   const linkHi = useHighlight('link-btn');
   useEffect(() => {
     setConfirm(false);
     setShowRecipes(false);
+    setKeepOpen(null);
   }, [b?.id]);
   if (!b || game.ui.mode.kind !== 'select' || game.ui.tidy) return null;
 
@@ -167,8 +169,8 @@ export function Inspector() {
   } else if (b.type === 'warehouse') {
     const cap = storageCapacity(b.type, b.level);
     const total = invTotal(b.input);
-    // everything stocked, plus items with a reserve set but none in stock right now
-    const items = [...new Set([...(Object.keys(b.input) as ItemId[]).filter((i) => (b.input[i] ?? 0) >= 1), ...(Object.keys(b.reserve ?? {}) as ItemId[])])];
+    const lines = warehouseLines(s, b);
+    const keepLabel = (n: number) => (n < 0 ? t('wh.keepAll') : n ? t('wh.keepN', { n }) : t('wh.keepNone'));
     body = (
       <>
         <div className="kv">
@@ -178,29 +180,47 @@ export function Inspector() {
           </span>
         </div>
         <div className="section-label">{t('wh.stock')}</div>
-        {items.length === 0 ? (
-          <p className="small dim">{t('ui.empty')}</p>
+        {lines.length === 0 ? (
+          <p className="small dim">{t('wh.emptyHint')}</p>
         ) : (
           <ul className="wh-stock">
-            {items.map((i) => {
-              const r = b.reserve?.[i] ?? 0;
-              return (
-                <li key={i}>
-                  <ItemIcon item={i} size={18} />
-                  <span className="wh-name">{t(`item.${i}`)}</span>
-                  <span className="mono wh-have">{Math.floor(b.input[i] ?? 0)}</span>
-                  <span className="wh-keep">
-                    <button className="icon-btn small" disabled={r === 0} onClick={() => game.stepReserve(b.id, i, -1)} aria-label={t('wh.less')}>
-                      −
-                    </button>
-                    <span className={`mono ${r ? 'warn' : 'dim'}`}>{r < 0 ? t('wh.keepAll') : r || '–'}</span>
-                    <button className="icon-btn small" disabled={r < 0} onClick={() => game.stepReserve(b.id, i, 1)} aria-label={t('wh.more')}>
-                      +
-                    </button>
+            {lines.map((l) => (
+              <li key={l.item} className={l.have ? '' : 'waiting'}>
+                <div className="wh-row">
+                  <ItemIcon item={l.item} size={18} />
+                  <span className="wh-name">
+                    {t(`item.${l.item}`)}
+                    {!l.have && l.from.length > 0 && (
+                      <span className="small dim wh-from">{t('wh.notYet', { from: l.from.map((f) => t(`b.${f}`)).join(', ') })}</span>
+                    )}
                   </span>
-                </li>
-              );
-            })}
+                  <span className="mono wh-have">{l.have}</span>
+                  <button
+                    className={`btn small wh-keep-btn ${l.keep ? 'set' : ''}`}
+                    aria-expanded={keepOpen === l.item}
+                    onClick={() => setKeepOpen(keepOpen === l.item ? null : l.item)}
+                  >
+                    {keepLabel(l.keep)} ▾
+                  </button>
+                </div>
+                {keepOpen === l.item && (
+                  <div className="wh-choices" role="group" aria-label={t('wh.keepFor', { item: t(`item.${l.item}`) })}>
+                    {RESERVE_STEPS.map((n) => (
+                      <button
+                        key={n}
+                        className={`chip ${l.keep === n ? 'active' : ''}`}
+                        onClick={() => {
+                          game.setReserve(b.id, l.item, n);
+                          setKeepOpen(null);
+                        }}
+                      >
+                        {n < 0 ? t('wh.keepAll') : n || t('wh.keepNone')}
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </li>
+            ))}
           </ul>
         )}
         <p className="small dim">{t('wh.keepHint')}</p>
@@ -283,7 +303,7 @@ export function Inspector() {
       ? [
           ...new Set<ItemId>([
             ...(Object.keys(b.input) as ItemId[]),
-            ...ins.flatMap((x) => beltCarries(s, x)),
+            ...ins.flatMap((x) => beltSupply(s, x, new Set([b.id]))),
             ...(belt.filter ? [belt.filter] : []),
           ]),
         ].filter((i) => acceptsType(dst, i))

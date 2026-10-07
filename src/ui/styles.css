@@ -2071,32 +2071,55 @@ select:focus-visible {
   gap: 4px;
 }
 .wh-stock li {
-  display: flex;
-  align-items: center;
-  gap: 8px;
   padding: 4px 6px;
   border-radius: 8px;
   background: var(--panel-2);
 }
+.wh-stock li.waiting .wh-have {
+  color: var(--dim);
+}
+.wh-row {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}
 .wh-name {
   flex: 1;
   min-width: 0;
-  overflow: hidden;
-  text-overflow: ellipsis;
-  white-space: nowrap;
+  display: flex;
+  flex-direction: column;
+  line-height: 1.25;
+}
+.wh-from {
+  overflow-wrap: anywhere;
 }
 .wh-have {
   min-width: 36px;
   text-align: right;
 }
-.wh-keep {
-  display: flex;
-  align-items: center;
-  gap: 4px;
+.wh-keep-btn {
+  min-height: 32px;
+  padding: 4px 10px;
+  min-width: 92px;
 }
-.wh-keep .mono {
-  min-width: 52px;
-  text-align: center;
+.wh-keep-btn.set {
+  border-color: var(--amber);
+  color: var(--amber);
+}
+.wh-choices {
+  display: flex;
+  flex-wrap: wrap;
+  gap: 6px;
+  padding: 8px 0 4px;
+}
+.wh-choices .chip {
+  cursor: pointer;
+  min-height: 32px;
+}
+.wh-choices .chip.active {
+  border-color: var(--amber);
+  color: var(--amber);
+  background: rgba(255, 201, 74, 0.12);
 }
 .belt-filter {
   max-width: 140px;

@@ -26,11 +26,12 @@ describe('intro popup flag', () => {
 describe("what's new notes", () => {
   it('shows every note newer than the version the player last saw', async () => {
     const { notesFor } = await import('../src/ui/WhatsNew');
-    expect(notesFor('1.1.1')).toEqual(['news.1', 'news.2', 'news.3', 'news.4', 'news.5', 'news.6', 'news.7', 'news.8', 'news.9']);
-    expect(notesFor('1.2.0')).toEqual(['news.5', 'news.6', 'news.7', 'news.8', 'news.9']);
-    expect(notesFor('1.2.1')).toEqual(['news.7', 'news.8', 'news.9']);
-    expect(notesFor('1.3.0')).toEqual([]);
-    expect(notesFor(undefined).length).toBe(9);
+    expect(notesFor('1.1.1')).toEqual(['news.1', 'news.2', 'news.3', 'news.4', 'news.5', 'news.6', 'news.7', 'news.8', 'news.9', 'news.10']);
+    expect(notesFor('1.2.0')).toEqual(['news.5', 'news.6', 'news.7', 'news.8', 'news.9', 'news.10']);
+    expect(notesFor('1.2.1')).toEqual(['news.7', 'news.8', 'news.9', 'news.10']);
+    expect(notesFor('1.3.0')).toEqual(['news.10']);
+    expect(notesFor('1.3.1')).toEqual([]);
+    expect(notesFor(undefined).length).toBe(10);
     expect(notesFor('1.10.0')).toEqual([]); // compared as numbers, not text
   });
 });

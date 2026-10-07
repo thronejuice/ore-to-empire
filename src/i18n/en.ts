@@ -698,10 +698,7 @@ export const en = {
   'notice.labIdle': 'The lab is idle — start the next research',
   'notice.researchNextShort': 'Research',
   'wh.stock': 'Stock · keep',
-  'wh.less': 'Keep fewer',
-  'wh.more': 'Keep more',
   'wh.keepAll': 'all',
-  'wh.keepHint': 'The number on the right stays in the warehouse; only the extra goes out on belts. Pick what each outgoing belt carries in the belt list below.',
   'wh.sendWhat': 'What this belt carries',
   'wh.auto': 'Auto (anything)',
   'err.notWarehouse': 'Only warehouses can do that',
@@ -709,6 +706,14 @@ export const en = {
   'news.7': 'Finished research now shows a card with what it unlocked and a "Research next" button, and the lab chip at the top glows when the lab is idle.',
   'news.8': 'Get notified in another tab when research finishes or a contract has 5 minutes left — turn it on in Settings.',
   'news.9': 'Warehouses can sort: choose what each outgoing belt carries, and keep a stock of each item so only the extra is sent on.',
+  'wh.keepN': 'keep {n}',
+  'wh.keepNone': 'keep none',
+  'wh.keepFor': 'How many {item} to keep',
+  'wh.notYet': 'none yet · from {from}',
+  'wh.emptyHint': 'Connect a belt into the warehouse — the items it brings show up here so you can set how many to keep, even before any arrive.',
+  'wh.keepHint': 'Tap "keep" to choose how many stay in the warehouse; only the extra goes out on belts. Pick what each outgoing belt carries in the belt list below.',
+  'err.badAmount': 'Pick one of the listed amounts',
+  'news.10': 'Warehouses list what their incoming belts will bring, so you can set how many to keep before anything arrives — tap "keep" and pick an amount in one go.',
 };
 
 export type Dict = Record<keyof typeof en, string>;

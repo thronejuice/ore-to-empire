@@ -9,7 +9,7 @@ import {
   removeLink,
   setBeltFilter,
   setRecipe,
-  stepReserve,
+  setReserve,
   upgradeBelts,
   upgradeBuilding,
   type ActionResult,
@@ -609,8 +609,8 @@ export class Game {
     if (this.result(setBeltFilter(this.state, beltId, item))) this.structureChanged();
   }
 
-  stepReserve(buildingId: number, item: ItemId, dir: 1 | -1) {
-    if (this.result(stepReserve(this.state, buildingId, item, dir))) this.emit();
+  setReserve(buildingId: number, item: ItemId, amount: number) {
+    if (this.result(setReserve(this.state, buildingId, item, amount))) this.emit();
   }
 
   removeBelt(id: number) {

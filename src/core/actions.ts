@@ -221,20 +221,63 @@ export function setBeltFilter(state: GameState, beltId: number, item: ItemId | n
   return ok(undefined);
 }
 
-/** steps for the warehouse "keep in stock" control; -1 = keep everything */
+/** choices for the warehouse "keep in stock" control; -1 = keep everything */
 export const RESERVE_STEPS = [0, 10, 25, 50, 100, 200, 500, 1000, -1];
 
-/** move a warehouse's reserve for one item one step up (+1) or down (-1) */
-export function stepReserve(state: GameState, buildingId: number, item: ItemId, dir: 1 | -1): ActionResult<number> {
+/** how many of an item a warehouse keeps instead of sending on (0 = none, -1 = all) */
+export function setReserve(state: GameState, buildingId: number, item: ItemId, amount: number): ActionResult<number> {
   const b = getBuilding(state, buildingId);
   if (!b || b.type !== 'warehouse') return fail('err.notWarehouse');
-  const cur = b.reserve?.[item] ?? 0;
-  let i = RESERVE_STEPS.indexOf(cur);
-  if (i < 0) i = RESERVE_STEPS.findIndex((v) => v > cur || v < 0); // a value from elsewhere: snap to the next step
-  const next = RESERVE_STEPS[Math.max(0, Math.min(RESERVE_STEPS.length - 1, i + dir))];
-  b.reserve = { ...b.reserve, [item]: next };
-  if (!next) delete b.reserve[item];
-  return ok(next);
+  if (!RESERVE_STEPS.includes(amount)) return fail('err.badAmount');
+  b.reserve = { ...b.reserve, [item]: amount };
+  if (!amount) delete b.reserve[item];
+  return ok(amount);
+}
+
+/**
+ * What a belt can bring in. A belt from a warehouse brings its filter item, or
+ * else whatever that warehouse holds or is itself fed (followed back up the chain).
+ */
+export function beltSupply(state: GameState, belt: Belt, seen: Set<number> = new Set()): ItemId[] {
+  const src = getBuilding(state, belt.from);
+  const dst = getBuilding(state, belt.to);
+  if (!src || !dst) return [];
+  if (src.type !== 'warehouse' || belt.filter) return beltCarries(state, belt);
+  if (seen.has(src.id)) return [];
+  seen.add(src.id);
+  const items = new Set<ItemId>((Object.keys(src.input) as ItemId[]).filter((i) => (src.input[i] ?? 0) >= 1));
+  for (const inBelt of state.belts) if (inBelt.to === src.id) for (const i of beltSupply(state, inBelt, seen)) items.add(i);
+  return [...items].filter((i) => acceptsType(dst, i));
+}
+
+export interface WarehouseLine {
+  item: ItemId;
+  have: number;
+  /** -1 = keep all */
+  keep: number;
+  /** building types whose belts bring this item */
+  from: BuildingType[];
+}
+
+/** every item a warehouse holds, keeps, or has coming in on a belt — so it can be set up before anything arrives */
+export function warehouseLines(state: GameState, b: Building): WarehouseLine[] {
+  const lines = new Map<ItemId, WarehouseLine>();
+  const line = (item: ItemId) => {
+    let l = lines.get(item);
+    if (!l) lines.set(item, (l = { item, have: Math.floor(b.input[item] ?? 0), keep: b.reserve?.[item] ?? 0, from: [] }));
+    return l;
+  };
+  for (const i of Object.keys(b.input) as ItemId[]) if ((b.input[i] ?? 0) >= 1) line(i);
+  for (const i of Object.keys(b.reserve ?? {}) as ItemId[]) line(i);
+  for (const belt of state.belts) {
+    if (belt.to !== b.id) continue;
+    const src = getBuilding(state, belt.from);
+    for (const i of beltSupply(state, belt, new Set([b.id]))) {
+      const l = line(i);
+      if (src && !l.from.includes(src.type)) l.from.push(src.type);
+    }
+  }
+  return [...lines.values()];
 }
 
 export interface LinkPlan {
