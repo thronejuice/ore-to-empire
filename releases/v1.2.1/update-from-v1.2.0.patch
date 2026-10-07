@@ -1,0 +1,590 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 2c69511..39d8e29 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -9,6 +9,21 @@
+ 
+ <!-- release-script: each "## [x.y.z]" section is copied into releases/vx.y.z/CHANGES.md -->
+ 
++## [1.2.1] - 2026-10-07
++
++### ปรับปรุง
++- **หน้าวิจัยแบ่งเป็น 3 แท็บ:** ทำได้ตอนนี้ (เปิดมาที่แท็บนี้เสมอ) · ยังล็อก · เสร็จแล้ว พร้อมตัวเลขจำนวนบนแท็บ ไม่ต้องเลื่อนหาหัวข้อที่ทำได้อีก
++  - การ์ดบอกหมวด, "ต้องวิจัยก่อน" และ "ปูทางไป" กดชื่อหัวข้อเพื่อไปที่หัวข้อนั้นได้ทันที
++  - งานวิจัยที่กำลังทำปักไว้ด้านบนทุกแท็บ · แท็บเสร็จแล้วเป็นรายการแบบย่อ
++- **โรงไฟฟ้าถ่านหินเผาเร็วขึ้น** จาก 1 ก้อน/5 วินาที (12 ก้อน/นาที) เป็น 1 ก้อน/2.5 วินาที (24 ก้อน/นาที) ใกล้เคียงกับที่เครื่องขุดถ่าน 1 เครื่องขุดได้ สายพานถ่านจึงไม่ค้างเพราะถ่านสำรองเต็มอีก
++  - เครื่องขุดบนถ่านเกรดต่ำ (18 ก้อน/นาที) จะส่งไม่ทันเต็มที่ อัปเกรดเครื่องขุดหรือเพิ่มอีกเครื่อง
++  - หน้าข้อมูลโรงไฟฟ้าแสดงแถบเชื้อเพลิงสำรอง อัตราการใช้ต่อนาที และคำแนะนำเมื่อสำรองเต็ม
++- **สายพานอ้อมสายแร่มากขึ้น** ยอมเดินอ้อมได้ราว 12 ช่องแทนการลากผ่านช่องแร่ (เดิม 3 ช่อง) ช่องแร่จึงยังว่างไว้วางเครื่องขุดได้ · สายพานเดิมกด "จัดสายพาน" เพื่อให้เดินเส้นใหม่ได้
++- หน้าต่าง "มีอะไรใหม่" แสดงเฉพาะเรื่องของเวอร์ชันที่ผู้เล่นยังไม่เคยเห็น: ผู้เล่นที่ข้าม v1.2.0 มาจะเห็นเรื่องโซนใหม่ด้วย ส่วนผู้เล่นที่เห็นแล้วจะเห็นแค่เรื่องหน้าวิจัย
++
++### เซฟ
++- ใช้เซฟเดิมได้ ไม่มีการเปลี่ยนรูปแบบเซฟ
++
+ ## [1.2.0] - 2026-10-07
+ 
+ ### เพิ่มใหม่
+diff --git a/package-lock.json b/package-lock.json
+index 2c03327..4200a20 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "1.2.0",
++  "version": "1.2.1",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "ore-to-empire",
+-      "version": "1.2.0",
++      "version": "1.2.1",
+       "dependencies": {
+         "@supabase/supabase-js": "^2.117.2",
+         "pixi.js": "^8.22.0",
+diff --git a/package.json b/package.json
+index bd0e914..39e93c2 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "1.2.0",
++  "version": "1.2.1",
+   "scripts": {
+     "dev": "vite",
+     "build": "tsc --noEmit && vite build",
+diff --git a/src/config/balance.ts b/src/config/balance.ts
+index 1ade473..f1367fa 100644
+--- a/src/config/balance.ts
++++ b/src/config/balance.ts
+@@ -520,7 +520,7 @@ export const MARKET = {
+ export const POWER = {
+   hq: 6,
+   coalPlant: 20,
+-  coalBurnTime: 5,
++  coalBurnTime: 2.5, // 24 coal/min — about what one drill on normal ore digs, so its belt keeps flowing
+   coalBuffer: 20,
+   solar: 2.5,
+   batteryCapacity: 900, // MJ
+diff --git a/src/core/pathfind.ts b/src/core/pathfind.ts
+index 73538ed..b41ccfd 100644
+--- a/src/core/pathfind.ts
++++ b/src/core/pathfind.ts
+@@ -11,7 +11,7 @@ const DIRS: [number, number][] = [
+ 
+ const CROSS_COST = 4; // crossing an existing belt is allowed (a bridge) but discouraged
+ const TURN_COST = 0.05; // prefer straight runs
+-const DEPOSIT_COST = 3; // keep ore deposits free for future drills
++const DEPOSIT_COST = 12; // keep deposits free for future drills: detour up to ~12 tiles rather than cross one
+ const WATER_COST = 6; // bridges over water cost more money: go around when it's not far
+ 
+ class MinHeap {
+diff --git a/src/core/sim.ts b/src/core/sim.ts
+index 0c5d042..883659a 100644
+--- a/src/core/sim.ts
++++ b/src/core/sim.ts
+@@ -40,7 +40,7 @@ const take = (inv: Inventory, item: ItemId, n: number) => {
+   else inv[item] = v;
+ };
+ 
+-const FUEL: Partial<Record<BuildingType, { items: ItemId[]; burn: number; buffer: number; mw: number }>> = {
++export const FUEL: Partial<Record<BuildingType, { items: ItemId[]; burn: number; buffer: number; mw: number }>> = {
+   coal_plant: { items: ['coal', 'charcoal'], burn: POWER.coalBurnTime, buffer: POWER.coalBuffer, mw: POWER.coalPlant },
+   nuclear_plant: { items: ['fuel_rod'], burn: POWER.nuclearBurnTime, buffer: POWER.nuclearBuffer, mw: POWER.nuclear },
+ };
+diff --git a/src/core/tidy.ts b/src/core/tidy.ts
+index 1594fe2..89726ae 100644
+--- a/src/core/tidy.ts
++++ b/src/core/tidy.ts
+@@ -26,7 +26,7 @@ export interface TidyPlan {
+ }
+ 
+ // heavier crossing/turn penalties than the one-at-a-time router, plus bundling
+-const TIDY_COSTS: PathCosts = { cross: 8, turn: 0.35, deposit: 3, hug: 0.15, water: 6 };
++const TIDY_COSTS: PathCosts = { cross: 8, turn: 0.35, deposit: 12, hug: 0.15, water: 6 };
+ export const TIDY_ROUNDS = 4;
+ const TIDY_SHUFFLES = 8;
+ 
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index d4e1f89..198d5ea 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -657,6 +657,23 @@ export const en = {
+   'q.q_rocket.t': 'Launch a rocket',
+   'q.q_rocket.d': 'Build and sell your first rocket — the top of the empire.',
+ 
++  // ---- research tabs
++  'ui.researchTab.available': 'Available now',
++  'ui.researchTab.locked': 'Locked',
++  'ui.researchTab.done': 'Done',
++  'ui.researchNeeds': 'Needs:',
++  'ui.researchLeadsTo': 'Leads to:',
++  'ui.researchNoneAvailable': 'Nothing to research right now — the rest needs other research first.',
++  'ui.researchWaitActive': 'Nothing else is available while the current research runs.',
++  'ui.researchAllDone': 'Everything is researched!',
++  'ui.researchNoneLocked': 'Nothing locked — everything is open or done.',
++  'ui.researchNoneDone': 'No research finished yet.',
++  'ui.researchOneAtATime': 'One research at a time — these can start when the current one finishes.',
++  'news.5': 'The Research page now has tabs: Available now, Locked and Done — no more scrolling to find what you can research.',
++  'ui.fuelStock': 'In stock',
++  'ui.fuelUse': 'Burns',
++  'ui.fuelFull': 'Fuel stock is full, so the belt waits until the next lump burns. Got spare coal? Link the drill to the HQ or a warehouse too — it sends every other lump there.',
++  'news.6': 'Coal plants now burn 24 coal/min (was 12), about what one drill digs, so coal belts keep flowing. New belts also detour around ore — tap "Tidy belts" to reroute old ones.',
+ };
+ 
+ export type Dict = Record<keyof typeof en, string>;
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index b689aa2..3511ef9 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -659,4 +659,21 @@ export const th: Dict = {
+   'q.q_rocket.t': 'ปล่อยจรวดลำแรก',
+   'q.q_rocket.d': 'สร้างและขายจรวดลำแรก สุดยอดของอาณาจักร',
+ 
++  // ---- research tabs
++  'ui.researchTab.available': 'ทำได้ตอนนี้',
++  'ui.researchTab.locked': 'ยังล็อก',
++  'ui.researchTab.done': 'เสร็จแล้ว',
++  'ui.researchNeeds': 'ต้องวิจัยก่อน:',
++  'ui.researchLeadsTo': 'ปูทางไป:',
++  'ui.researchNoneAvailable': 'ตอนนี้ยังไม่มีอะไรให้วิจัย หัวข้อที่เหลือต้องวิจัยอย่างอื่นก่อน',
++  'ui.researchWaitActive': 'ไม่มีหัวข้ออื่นที่ทำได้ระหว่างรองานวิจัยปัจจุบัน',
++  'ui.researchAllDone': 'วิจัยครบทุกหัวข้อแล้ว!',
++  'ui.researchNoneLocked': 'ไม่มีหัวข้อที่ล็อกอยู่ ทุกอย่างเปิดหรือทำเสร็จแล้ว',
++  'ui.researchNoneDone': 'ยังไม่มีงานวิจัยที่ทำเสร็จ',
++  'ui.researchOneAtATime': 'วิจัยได้ทีละหัวข้อ หัวข้อเหล่านี้เริ่มได้เมื่องานวิจัยปัจจุบันเสร็จ',
++  'news.5': 'หน้าวิจัยแบ่งเป็นแท็บ: ทำได้ตอนนี้ · ยังล็อก · เสร็จแล้ว ไม่ต้องเลื่อนหาหัวข้อที่วิจัยได้อีกต่อไป',
++  'ui.fuelStock': 'เชื้อเพลิงสำรอง',
++  'ui.fuelUse': 'ใช้เชื้อเพลิง',
++  'ui.fuelFull': 'เชื้อเพลิงสำรองเต็มแล้ว สายพานจะรอจนกว่าจะเผาก้อนถัดไป ถ้าถ่านเหลือ ลองต่อเครื่องขุดไปสำนักงานใหญ่หรือโกดังอีกเส้น ถ่านจะถูกแบ่งส่งสลับกัน',
++  'news.6': 'โรงไฟฟ้าถ่านหินเผาถ่าน 24 ก้อน/นาที (เดิม 12) ใกล้เคียงกับเครื่องขุด 1 เครื่อง สายพานถ่านจึงไม่ค้าง และสายพานจะอ้อมช่องแร่มากขึ้น กด "จัดสายพาน" เพื่อให้สายพานเดิมเดินเส้นใหม่',
+ };
+diff --git a/src/ui/Inspector.tsx b/src/ui/Inspector.tsx
+index a6466b9..15230f7 100644
+--- a/src/ui/Inspector.tsx
++++ b/src/ui/Inspector.tsx
+@@ -14,7 +14,7 @@ import {
+ } from '../config/balance';
+ import { globalSpeed, powerMult, recipeUnlocked } from '../core/economy';
+ import { tileMult } from '../core/veins';
+-import { isCrafter } from '../core/sim';
++import { FUEL, isCrafter } from '../core/sim';
+ import { extractedItem } from '../core/zones';
+ import { OreInfo } from './TileSheet';
+ import { freeMoveLeft, isUpgradable, linkCarriesIn, moveFee, totalInvested } from '../core/actions';
+@@ -179,13 +179,30 @@ export function Inspector() {
+     );
+   } else if (b.type === 'coal_plant' || b.type === 'nuclear_plant') {
+     const mw = b.type === 'coal_plant' ? POWER.coalPlant : POWER.nuclear;
++    const fuel = FUEL[b.type]!;
++    const stock = Math.floor(invTotal(b.input));
++    const full = stock >= fuel.buffer;
+     body = (
+-      <div className="kv">
+-        <span>{t('ui.fuel')}</span>
+-        <Inv inv={b.input} empty={t('ui.empty')} />
+-        <span>{t('ui.generates')}</span>
+-        <span className={`mono ${b.burn > 0 ? 'good' : 'bad'}`}>{b.burn > 0 ? `+${mw}` : '0'} MW</span>
+-      </div>
++      <>
++        <div className="kv">
++          <span>{t('ui.fuel')}</span>
++          <Inv inv={b.input} empty={t('ui.empty')} />
++          <span>{t('ui.fuelStock')}</span>
++          <span className="fuel-stock">
++            <span className="meter grow">
++              <span className="fill" style={{ width: `${Math.min(100, (stock / fuel.buffer) * 100)}%` }} />
++            </span>
++            <span className="mono">
++              {stock}/{fuel.buffer}
++            </span>
++          </span>
++          <span>{t('ui.fuelUse')}</span>
++          <span className="mono">{fmtNum(60 / fuel.burn)}/min</span>
++          <span>{t('ui.generates')}</span>
++          <span className={`mono ${b.burn > 0 ? 'good' : 'bad'}`}>{b.burn > 0 ? `+${mw}` : '0'} MW</span>
++        </div>
++        {full && <p className="small dim">{t('ui.fuelFull')}</p>}
++      </>
+     );
+   } else if (b.type === 'solar' || b.type === 'geothermal') {
+     body = (
+diff --git a/src/ui/MetaPanels.tsx b/src/ui/MetaPanels.tsx
+index 223b754..1daaed6 100644
+--- a/src/ui/MetaPanels.tsx
++++ b/src/ui/MetaPanels.tsx
+@@ -1,4 +1,4 @@
+-import { useState } from 'react';
++import { useEffect, useState } from 'react';
+ import {
+   BALANCE,
+   CITIES,
+@@ -38,13 +38,95 @@ const TIERS = ['ui.tierA', 'ui.tierB', 'ui.tierC', 'ui.tierD', 'ui.tierE', 'ui.t
+ 
+ // ============================================================================ research
+ 
++type ResearchTab = 'available' | 'locked' | 'done';
++
++/** research that lists `id` among its requirements */
++const leadsTo = (id: ResearchId) => (Object.keys(RESEARCH) as ResearchId[]).filter((r) => RESEARCH[r].requires.includes(id));
++
+ export function ResearchPanel() {
+   const game = useGame();
+   const t = useT();
+-  if (game.ui.panel !== 'research') return null;
++  const [tab, setTab] = useState<ResearchTab>('available');
++  const [flash, setFlash] = useState<ResearchId | null>(null);
++  const open = game.ui.panel === 'research';
++  useEffect(() => {
++    if (open) setTab('available');
++  }, [open]);
++  useEffect(() => {
++    if (!flash) return;
++    document.getElementById(`rnode-${flash}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
++    const timer = setTimeout(() => setFlash(null), 1600);
++    return () => clearTimeout(timer);
++  }, [flash, tab]);
++  if (!open) return null;
+   const s = game.state;
+-  const ids = Object.keys(RESEARCH) as ResearchId[];
++  const ids = (Object.keys(RESEARCH) as ResearchId[]).sort((a, b) => RESEARCH[a].tier - RESEARCH[b].tier || RESEARCH[a].cost - RESEARCH[b].cost);
+   const active = s.research.active;
++  const lists: Record<ResearchTab, ResearchId[]> = {
++    available: ids.filter((id) => researchState(s, id) === 'available'),
++    locked: ids.filter((id) => researchState(s, id) === 'locked'),
++    done: ids.filter((id) => researchState(s, id) === 'done'),
++  };
++  const goTo = (id: ResearchId) => {
++    const st = researchState(s, id);
++    setTab(st === 'available' ? 'available' : st === 'done' ? 'done' : 'locked');
++    setFlash(id);
++  };
++  const effectsOf = (id: ResearchId) => {
++    const def = RESEARCH[id];
++    const e: string[] = [];
++    if (def.speed) e.push(t('ui.effectSpeed', { pct: Math.round(def.speed * 100) }));
++    if (def.powerSave) e.push(t('ui.effectPower', { pct: Math.round(def.powerSave * 100) }));
++    if (def.beltMax) e.push(t('ui.effectBelt', { n: def.beltMax }));
++    if (def.capacity) e.push(t('ui.effectCapacity', { pct: Math.round(def.capacity * 100) }));
++    if (def.moveDiscount) e.push(t('ui.effectMove', { pct: Math.round(def.moveDiscount * 100) }));
++    return e;
++  };
++  const chips = (list: ResearchId[]) =>
++    list.map((r) => (
++      <button key={r} className="link-btn chip-link" onClick={() => goTo(r)}>
++        {t(`r.${r}.t`)}
++      </button>
++    ));
++
++  const card = (id: ResearchId) => {
++    const def = RESEARCH[id];
++    const st = researchState(s, id);
++    const effects = effectsOf(id);
++    const next = leadsTo(id);
++    const missing = def.requires.filter((r) => !s.research.done.includes(r));
++    return (
++      <div key={id} id={`rnode-${id}`} className={`node ${st} ${flash === id ? 'flash' : ''}`}>
++        <div className="node-head">
++          <strong>{t(`r.${id}.t`)}</strong>
++          <span className="tier-tag">{t(TIERS[def.tier])}</span>
++        </div>
++        <p className="small dim">{t(`r.${id}.d`)}</p>
++        {effects.length > 0 && <p className="small good">{effects.join(' · ')}</p>}
++        {st === 'locked' && (
++          <p className="small warn">
++            {t('ui.researchNeeds')} {chips(missing)}
++          </p>
++        )}
++        {next.length > 0 && (
++          <p className="small dim">
++            → {t('ui.researchLeadsTo')} {chips(next)}
++          </p>
++        )}
++        {st === 'available' && (
++          <button className="btn small primary" disabled={!!active || s.money < def.cost} onClick={() => game.research(id)}>
++            <span className="mono">{fmtMoney(def.cost)}</span> · {fmtDuration(s.settings.lang, def.time)}
++          </button>
++        )}
++        {st === 'locked' && (
++          <span className="small dim mono">
++            {fmtMoney(def.cost)} · {fmtDuration(s.settings.lang, def.time)}
++          </span>
++        )}
++      </div>
++    );
++  };
++
+   return (
+     <Modal title={t('ui.research')} onClose={() => game.openPanel('none')} wide>
+       {active && (
+@@ -62,47 +144,36 @@ export function ResearchPanel() {
+           </button>
+         </div>
+       )}
+-      <div className="tree">
+-        {TIERS.map((label, tier) => (
+-          <section key={label} className="tree-col">
+-            <h3 className="section-label">{t(label)}</h3>
+-            {ids
+-              .filter((id) => RESEARCH[id].tier === tier)
+-              .map((id) => {
+-                const def = RESEARCH[id];
+-                const st = researchState(s, id);
+-                const effects: string[] = [];
+-                if (def.speed) effects.push(t('ui.effectSpeed', { pct: Math.round(def.speed * 100) }));
+-                if (def.powerSave) effects.push(t('ui.effectPower', { pct: Math.round(def.powerSave * 100) }));
+-                if (def.beltMax) effects.push(t('ui.effectBelt', { n: def.beltMax }));
+-                if (def.capacity) effects.push(t('ui.effectCapacity', { pct: Math.round(def.capacity * 100) }));
+-                if (def.moveDiscount) effects.push(t('ui.effectMove', { pct: Math.round(def.moveDiscount * 100) }));
+-                const missing = def.requires.filter((r) => !s.research.done.includes(r));
+-                return (
+-                  <div key={id} className={`node ${st}`}>
+-                    <div className="node-head">
+-                      <strong>{t(`r.${id}.t`)}</strong>
+-                      {st === 'done' && <span className="good">✓</span>}
+-                    </div>
+-                    <p className="small dim">{t(`r.${id}.d`)}</p>
+-                    {effects.length > 0 && <p className="small good">{effects.join(' · ')}</p>}
+-                    {st === 'locked' && <p className="small warn">{t('ui.researchLocked', { name: missing.map((m) => t(`r.${m}.t`)).join(', ') })}</p>}
+-                    {st === 'available' && (
+-                      <button className="btn small primary" disabled={!!active || s.money < def.cost} onClick={() => game.research(id)}>
+-                        <span className="mono">{fmtMoney(def.cost)}</span> · {fmtDuration(s.settings.lang, def.time)}
+-                      </button>
+-                    )}
+-                    {st === 'active' && active && (
+-                      <span className="meter">
+-                        <span className="fill" style={{ width: `${(1 - active.remaining / def.time) * 100}%` }} />
+-                      </span>
+-                    )}
+-                  </div>
+-                );
+-              })}
+-          </section>
++      <div className="tabs" role="tablist">
++        {(['available', 'locked', 'done'] as ResearchTab[]).map((k) => (
++          <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? 'active' : ''}`} onClick={() => setTab(k)}>
++            {t(`ui.researchTab.${k}`)} <span className="tab-count mono">{lists[k].length}</span>
++          </button>
+         ))}
+       </div>
++      {tab === 'done' ? (
++        lists.done.length ? (
++          <ul className="research-done">
++            {lists.done.map((id) => (
++              <li key={id} id={`rnode-${id}`} className={flash === id ? 'flash' : ''}>
++                <span className="good">✓</span> <strong>{t(`r.${id}.t`)}</strong> <span className="tier-tag">{t(TIERS[RESEARCH[id].tier])}</span>
++                {effectsOf(id).length > 0 && <span className="small good"> · {effectsOf(id).join(' · ')}</span>}
++              </li>
++            ))}
++          </ul>
++        ) : (
++          <p className="small dim center">{t('ui.researchNoneDone')}</p>
++        )
++      ) : lists[tab].length ? (
++        <>
++          {tab === 'available' && active && <p className="small warn">{t('ui.researchOneAtATime')}</p>}
++          <div className="research-list">{lists[tab].map(card)}</div>
++        </>
++      ) : (
++        <p className="small dim center">
++          {tab === 'available' ? (lists.locked.length ? (active ? t('ui.researchWaitActive') : t('ui.researchNoneAvailable')) : t('ui.researchAllDone')) : t('ui.researchNoneLocked')}
++        </p>
++      )}
+     </Modal>
+   );
+ }
+diff --git a/src/ui/WhatsNew.tsx b/src/ui/WhatsNew.tsx
+index 7f78591..ee29d39 100644
+--- a/src/ui/WhatsNew.tsx
++++ b/src/ui/WhatsNew.tsx
+@@ -1,8 +1,31 @@
+ import { startupPopupsDone } from './Intro';
+ import { useGame, useT } from './hooks';
+ 
+-/** i18n keys of this version's notes — replace them on every release that players should hear about */
+-const NOTES = ['news.1', 'news.2', 'news.3', 'news.4'];
++/**
++ * Patch notes with the version that introduced them. A player sees every note
++ * newer than the version they last closed this popup on, so skipping a release
++ * doesn't hide its news. Drop old entries once nobody can still be behind them.
++ */
++const NOTES: { key: string; version: string }[] = [
++  { key: 'news.1', version: '1.2.0' },
++  { key: 'news.2', version: '1.2.0' },
++  { key: 'news.3', version: '1.2.0' },
++  { key: 'news.4', version: '1.2.0' },
++  { key: 'news.5', version: '1.2.1' },
++  { key: 'news.6', version: '1.2.1' },
++];
++
++function newer(a: string, b: string | undefined): boolean {
++  if (!b) return true;
++  const x = a.split('.').map(Number);
++  const y = b.split('.').map(Number);
++  for (let i = 0; i < 3; i++) if ((x[i] ?? 0) !== (y[i] ?? 0)) return (x[i] ?? 0) > (y[i] ?? 0);
++  return false;
++}
++
++export function notesFor(seenVersion: string | undefined): string[] {
++  return NOTES.filter((n) => newer(n.version, seenVersion)).map((n) => n.key);
++}
+ 
+ /** Patch notes, shown once to returning players after the game updates. */
+ export function WhatsNew() {
+@@ -11,13 +34,15 @@ export function WhatsNew() {
+   const s = game.state;
+   if (game.ui.intro || s.quests.introSeen === false || s.settings.seenVersion === __APP_VERSION__) return null;
+   if (!startupPopupsDone(game)) return null;
++  const notes = notesFor(s.settings.seenVersion);
++  if (!notes.length) return null;
+   return (
+     <div className="modal-backdrop">
+       <div className="modal whats-new" role="dialog" aria-modal="true" aria-labelledby="news-title">
+         <span className="whats-new-tag mono">v{__APP_VERSION__}</span>
+         <h2 id="news-title">{t('news.title')}</h2>
+         <ul>
+-          {NOTES.map((k) => (
++          {notes.map((k) => (
+             <li key={k}>{t(k)}</li>
+           ))}
+         </ul>
+diff --git a/src/ui/styles.css b/src/ui/styles.css
+index c40ead1..e8c31ee 100644
+--- a/src/ui/styles.css
++++ b/src/ui/styles.css
+@@ -1906,3 +1906,71 @@ select:focus-visible {
+ .perk.licence > .good {
+   white-space: nowrap;
+ }
++
++/* research tabs */
++.tab-count {
++  display: inline-block;
++  min-width: 20px;
++  margin-left: 4px;
++  padding: 0 6px;
++  border-radius: 999px;
++  background: var(--panel-2);
++  font-size: 12px;
++  text-align: center;
++}
++.tab.active .tab-count {
++  background: var(--orange);
++  color: #0f1318;
++}
++.research-list {
++  display: grid;
++  grid-template-columns: repeat(auto-fill, minmax(260px, 1fr));
++  gap: 10px;
++}
++.tier-tag {
++  flex-shrink: 0;
++  align-self: flex-start;
++  padding: 1px 7px;
++  border-radius: 999px;
++  border: 1px solid var(--edge);
++  font-size: 11px;
++  color: var(--dim);
++  white-space: nowrap;
++}
++.chip-link {
++  display: inline;
++  padding: 0;
++  margin-right: 6px;
++  font-size: inherit;
++}
++.research-done {
++  list-style: none;
++  margin: 0;
++  padding: 0;
++  display: flex;
++  flex-direction: column;
++  gap: 6px;
++}
++.research-done li {
++  padding: 8px 10px;
++  border-radius: 8px;
++  background: var(--panel-2);
++}
++.node.flash,
++.research-done li.flash {
++  outline: 2px solid var(--orange);
++  outline-offset: 1px;
++}
++@media (max-width: 720px) {
++  .research-list {
++    grid-template-columns: 1fr;
++  }
++}
++.research-list .node.locked {
++  opacity: 0.85;
++}
++.fuel-stock {
++  display: flex;
++  align-items: center;
++  gap: 8px;
++}
+diff --git a/tests/intro.test.ts b/tests/intro.test.ts
+index 212910f..f4cb60e 100644
+--- a/tests/intro.test.ts
++++ b/tests/intro.test.ts
+@@ -22,3 +22,14 @@ describe('intro popup flag', () => {
+     expect(deserialize(JSON.stringify(legacySave(s)))!.quests.introSeen).toBe(true);
+   });
+ });
++
++describe("what's new notes", () => {
++  it('shows every note newer than the version the player last saw', async () => {
++    const { notesFor } = await import('../src/ui/WhatsNew');
++    expect(notesFor('1.1.1')).toEqual(['news.1', 'news.2', 'news.3', 'news.4', 'news.5', 'news.6']);
++    expect(notesFor('1.2.0')).toEqual(['news.5', 'news.6']);
++    expect(notesFor('1.2.1')).toEqual([]);
++    expect(notesFor(undefined).length).toBe(6);
++    expect(notesFor('1.10.0')).toEqual([]); // compared as numbers, not text
++  });
++});
+diff --git a/tests/zones.test.ts b/tests/zones.test.ts
+index d77c3dd..b06a8a7 100644
+--- a/tests/zones.test.ts
++++ b/tests/zones.test.ts
+@@ -260,9 +260,13 @@ describe('zone buildings', () => {
+     s.buildings.find((b) => b.id === f.value.id)!.recipe = 'charcoal';
+     expect(createLink(s, lc.value.id, f.value.id).ok).toBe(true);
+     expect(createLink(s, f.value.id, plant.value.id).ok).toBe(true);
+-    run(s, 60);
++    let burned = false;
++    for (let t = 0; t < 60; t += BALANCE.tickSeconds) {
++      tick(s, BALANCE.tickSeconds);
++      if (plant.value.burn > 0) burned = true;
++    }
+     expect(s.stats.produced.charcoal ?? 0).toBeGreaterThan(0);
+-    expect(plant.value.burn > 0 || (plant.value.input.charcoal ?? 0) > 0).toBe(true);
++    expect(burned).toBe(true);
+   });
+ 
+   it('oil pump → refinery makes plastic', () => {
+@@ -280,6 +284,22 @@ describe('zone buildings', () => {
+   });
+ });
+ 
++describe('belt routing', () => {
++  it('goes around ore instead of over it when the detour is short', () => {
++    const s = newGame(6);
++    s.money = 1e6;
++    s.world.deposits = s.world.deposits.map(() => null);
++    const a = placeBuilding(s, 'warehouse', O + 10, O + 12);
++    const b = placeBuilding(s, 'warehouse', O + 16, O + 12);
++    if (!a.ok || !b.ok) throw new Error('place');
++    // a 5-tile wall of ore between them
++    for (let y = O + 10; y <= O + 14; y++) s.world.deposits[idx(s, O + 13, y)] = 'iron_ore';
++    const plan = planLink(s, a.value.id, b.value.id);
++    if (!plan.ok) throw new Error(plan.reason);
++    expect(plan.value.path.some(([x, y]) => s.world.deposits[idx(s, x, y)])).toBe(false);
++  });
++});
++
+ describe('bridges', () => {
+   it('belt tiles over water cost more, and the belt perk discounts them', () => {
+     const s = newGame(2);
