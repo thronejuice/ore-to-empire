@@ -657,6 +657,19 @@ export const en = {
   'q.q_rocket.t': 'Launch a rocket',
   'q.q_rocket.d': 'Build and sell your first rocket — the top of the empire.',
 
+  // ---- research tabs
+  'ui.researchTab.available': 'Available now',
+  'ui.researchTab.locked': 'Locked',
+  'ui.researchTab.done': 'Done',
+  'ui.researchNeeds': 'Needs:',
+  'ui.researchLeadsTo': 'Leads to:',
+  'ui.researchNoneAvailable': 'Nothing to research right now — the rest needs other research first.',
+  'ui.researchWaitActive': 'Nothing else is available while the current research runs.',
+  'ui.researchAllDone': 'Everything is researched!',
+  'ui.researchNoneLocked': 'Nothing locked — everything is open or done.',
+  'ui.researchNoneDone': 'No research finished yet.',
+  'ui.researchOneAtATime': 'One research at a time — these can start when the current one finishes.',
+  'news.5': 'The Research page now has tabs: Available now, Locked and Done — no more scrolling to find what you can research.',
 };
 
 export type Dict = Record<keyof typeof en, string>;

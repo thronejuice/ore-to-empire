@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import {
   BALANCE,
   CITIES,
@@ -38,13 +38,95 @@ const TIERS = ['ui.tierA', 'ui.tierB', 'ui.tierC', 'ui.tierD', 'ui.tierE', 'ui.t
 
 // ============================================================================ research
 
+type ResearchTab = 'available' | 'locked' | 'done';
+
+/** research that lists `id` among its requirements */
+const leadsTo = (id: ResearchId) => (Object.keys(RESEARCH) as ResearchId[]).filter((r) => RESEARCH[r].requires.includes(id));
+
 export function ResearchPanel() {
   const game = useGame();
   const t = useT();
-  if (game.ui.panel !== 'research') return null;
+  const [tab, setTab] = useState<ResearchTab>('available');
+  const [flash, setFlash] = useState<ResearchId | null>(null);
+  const open = game.ui.panel === 'research';
+  useEffect(() => {
+    if (open) setTab('available');
+  }, [open]);
+  useEffect(() => {
+    if (!flash) return;
+    document.getElementById(`rnode-${flash}`)?.scrollIntoView({ behavior: 'smooth', block: 'center' });
+    const timer = setTimeout(() => setFlash(null), 1600);
+    return () => clearTimeout(timer);
+  }, [flash, tab]);
+  if (!open) return null;
   const s = game.state;
-  const ids = Object.keys(RESEARCH) as ResearchId[];
+  const ids = (Object.keys(RESEARCH) as ResearchId[]).sort((a, b) => RESEARCH[a].tier - RESEARCH[b].tier || RESEARCH[a].cost - RESEARCH[b].cost);
   const active = s.research.active;
+  const lists: Record<ResearchTab, ResearchId[]> = {
+    available: ids.filter((id) => researchState(s, id) === 'available'),
+    locked: ids.filter((id) => researchState(s, id) === 'locked'),
+    done: ids.filter((id) => researchState(s, id) === 'done'),
+  };
+  const goTo = (id: ResearchId) => {
+    const st = researchState(s, id);
+    setTab(st === 'available' ? 'available' : st === 'done' ? 'done' : 'locked');
+    setFlash(id);
+  };
+  const effectsOf = (id: ResearchId) => {
+    const def = RESEARCH[id];
+    const e: string[] = [];
+    if (def.speed) e.push(t('ui.effectSpeed', { pct: Math.round(def.speed * 100) }));
+    if (def.powerSave) e.push(t('ui.effectPower', { pct: Math.round(def.powerSave * 100) }));
+    if (def.beltMax) e.push(t('ui.effectBelt', { n: def.beltMax }));
+    if (def.capacity) e.push(t('ui.effectCapacity', { pct: Math.round(def.capacity * 100) }));
+    if (def.moveDiscount) e.push(t('ui.effectMove', { pct: Math.round(def.moveDiscount * 100) }));
+    return e;
+  };
+  const chips = (list: ResearchId[]) =>
+    list.map((r) => (
+      <button key={r} className="link-btn chip-link" onClick={() => goTo(r)}>
+        {t(`r.${r}.t`)}
+      </button>
+    ));
+
+  const card = (id: ResearchId) => {
+    const def = RESEARCH[id];
+    const st = researchState(s, id);
+    const effects = effectsOf(id);
+    const next = leadsTo(id);
+    const missing = def.requires.filter((r) => !s.research.done.includes(r));
+    return (
+      <div key={id} id={`rnode-${id}`} className={`node ${st} ${flash === id ? 'flash' : ''}`}>
+        <div className="node-head">
+          <strong>{t(`r.${id}.t`)}</strong>
+          <span className="tier-tag">{t(TIERS[def.tier])}</span>
+        </div>
+        <p className="small dim">{t(`r.${id}.d`)}</p>
+        {effects.length > 0 && <p className="small good">{effects.join(' · ')}</p>}
+        {st === 'locked' && (
+          <p className="small warn">
+            {t('ui.researchNeeds')} {chips(missing)}
+          </p>
+        )}
+        {next.length > 0 && (
+          <p className="small dim">
+            → {t('ui.researchLeadsTo')} {chips(next)}
+          </p>
+        )}
+        {st === 'available' && (
+          <button className="btn small primary" disabled={!!active || s.money < def.cost} onClick={() => game.research(id)}>
+            <span className="mono">{fmtMoney(def.cost)}</span> · {fmtDuration(s.settings.lang, def.time)}
+          </button>
+        )}
+        {st === 'locked' && (
+          <span className="small dim mono">
+            {fmtMoney(def.cost)} · {fmtDuration(s.settings.lang, def.time)}
+          </span>
+        )}
+      </div>
+    );
+  };
+
   return (
     <Modal title={t('ui.research')} onClose={() => game.openPanel('none')} wide>
       {active && (
@@ -62,47 +144,36 @@ export function ResearchPanel() {
           </button>
         </div>
       )}
-      <div className="tree">
-        {TIERS.map((label, tier) => (
-          <section key={label} className="tree-col">
-            <h3 className="section-label">{t(label)}</h3>
-            {ids
-              .filter((id) => RESEARCH[id].tier === tier)
-              .map((id) => {
-                const def = RESEARCH[id];
-                const st = researchState(s, id);
-                const effects: string[] = [];
-                if (def.speed) effects.push(t('ui.effectSpeed', { pct: Math.round(def.speed * 100) }));
-                if (def.powerSave) effects.push(t('ui.effectPower', { pct: Math.round(def.powerSave * 100) }));
-                if (def.beltMax) effects.push(t('ui.effectBelt', { n: def.beltMax }));
-                if (def.capacity) effects.push(t('ui.effectCapacity', { pct: Math.round(def.capacity * 100) }));
-                if (def.moveDiscount) effects.push(t('ui.effectMove', { pct: Math.round(def.moveDiscount * 100) }));
-                const missing = def.requires.filter((r) => !s.research.done.includes(r));
-                return (
-                  <div key={id} className={`node ${st}`}>
-                    <div className="node-head">
-                      <strong>{t(`r.${id}.t`)}</strong>
-                      {st === 'done' && <span className="good">✓</span>}
-                    </div>
-                    <p className="small dim">{t(`r.${id}.d`)}</p>
-                    {effects.length > 0 && <p className="small good">{effects.join(' · ')}</p>}
-                    {st === 'locked' && <p className="small warn">{t('ui.researchLocked', { name: missing.map((m) => t(`r.${m}.t`)).join(', ') })}</p>}
-                    {st === 'available' && (
-                      <button className="btn small primary" disabled={!!active || s.money < def.cost} onClick={() => game.research(id)}>
-                        <span className="mono">{fmtMoney(def.cost)}</span> · {fmtDuration(s.settings.lang, def.time)}
-                      </button>
-                    )}
-                    {st === 'active' && active && (
-                      <span className="meter">
-                        <span className="fill" style={{ width: `${(1 - active.remaining / def.time) * 100}%` }} />
-                      </span>
-                    )}
-                  </div>
-                );
-              })}
-          </section>
+      <div className="tabs" role="tablist">
+        {(['available', 'locked', 'done'] as ResearchTab[]).map((k) => (
+          <button key={k} role="tab" aria-selected={tab === k} className={`tab ${tab === k ? 'active' : ''}`} onClick={() => setTab(k)}>
+            {t(`ui.researchTab.${k}`)} <span className="tab-count mono">{lists[k].length}</span>
+          </button>
         ))}
       </div>
+      {tab === 'done' ? (
+        lists.done.length ? (
+          <ul className="research-done">
+            {lists.done.map((id) => (
+              <li key={id} id={`rnode-${id}`} className={flash === id ? 'flash' : ''}>
+                <span className="good">✓</span> <strong>{t(`r.${id}.t`)}</strong> <span className="tier-tag">{t(TIERS[RESEARCH[id].tier])}</span>
+                {effectsOf(id).length > 0 && <span className="small good"> · {effectsOf(id).join(' · ')}</span>}
+              </li>
+            ))}
+          </ul>
+        ) : (
+          <p className="small dim center">{t('ui.researchNoneDone')}</p>
+        )
+      ) : lists[tab].length ? (
+        <>
+          {tab === 'available' && active && <p className="small warn">{t('ui.researchOneAtATime')}</p>}
+          <div className="research-list">{lists[tab].map(card)}</div>
+        </>
+      ) : (
+        <p className="small dim center">
+          {tab === 'available' ? (lists.locked.length ? (active ? t('ui.researchWaitActive') : t('ui.researchNoneAvailable')) : t('ui.researchAllDone')) : t('ui.researchNoneLocked')}
+        </p>
+      )}
     </Modal>
   );
 }

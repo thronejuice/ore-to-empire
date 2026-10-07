@@ -22,3 +22,14 @@ describe('intro popup flag', () => {
     expect(deserialize(JSON.stringify(legacySave(s)))!.quests.introSeen).toBe(true);
   });
 });
+
+describe("what's new notes", () => {
+  it('shows every note newer than the version the player last saw', async () => {
+    const { notesFor } = await import('../src/ui/WhatsNew');
+    expect(notesFor('1.1.1')).toEqual(['news.1', 'news.2', 'news.3', 'news.4', 'news.5']);
+    expect(notesFor('1.2.0')).toEqual(['news.5']);
+    expect(notesFor('1.2.1')).toEqual([]);
+    expect(notesFor(undefined).length).toBe(5);
+    expect(notesFor('1.10.0')).toEqual([]); // compared as numbers, not text
+  });
+});
