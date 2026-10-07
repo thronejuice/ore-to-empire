@@ -40,7 +40,7 @@ const take = (inv: Inventory, item: ItemId, n: number) => {
   else inv[item] = v;
 };
 
-const FUEL: Partial<Record<BuildingType, { items: ItemId[]; burn: number; buffer: number; mw: number }>> = {
+export const FUEL: Partial<Record<BuildingType, { items: ItemId[]; burn: number; buffer: number; mw: number }>> = {
   coal_plant: { items: ['coal', 'charcoal'], burn: POWER.coalBurnTime, buffer: POWER.coalBuffer, mw: POWER.coalPlant },
   nuclear_plant: { items: ['fuel_rod'], burn: POWER.nuclearBurnTime, buffer: POWER.nuclearBuffer, mw: POWER.nuclear },
 };

@@ -12,6 +12,7 @@ const NOTES: { key: string; version: string }[] = [
   { key: 'news.3', version: '1.2.0' },
   { key: 'news.4', version: '1.2.0' },
   { key: 'news.5', version: '1.2.1' },
+  { key: 'news.6', version: '1.2.1' },
 ];
 
 function newer(a: string, b: string | undefined): boolean {

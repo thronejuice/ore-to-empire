@@ -14,7 +14,7 @@ import {
 } from '../config/balance';
 import { globalSpeed, powerMult, recipeUnlocked } from '../core/economy';
 import { tileMult } from '../core/veins';
-import { isCrafter } from '../core/sim';
+import { FUEL, isCrafter } from '../core/sim';
 import { extractedItem } from '../core/zones';
 import { OreInfo } from './TileSheet';
 import { freeMoveLeft, isUpgradable, linkCarriesIn, moveFee, totalInvested } from '../core/actions';
@@ -179,13 +179,30 @@ export function Inspector() {
     );
   } else if (b.type === 'coal_plant' || b.type === 'nuclear_plant') {
     const mw = b.type === 'coal_plant' ? POWER.coalPlant : POWER.nuclear;
+    const fuel = FUEL[b.type]!;
+    const stock = Math.floor(invTotal(b.input));
+    const full = stock >= fuel.buffer;
     body = (
-      <div className="kv">
-        <span>{t('ui.fuel')}</span>
-        <Inv inv={b.input} empty={t('ui.empty')} />
-        <span>{t('ui.generates')}</span>
-        <span className={`mono ${b.burn > 0 ? 'good' : 'bad'}`}>{b.burn > 0 ? `+${mw}` : '0'} MW</span>
-      </div>
+      <>
+        <div className="kv">
+          <span>{t('ui.fuel')}</span>
+          <Inv inv={b.input} empty={t('ui.empty')} />
+          <span>{t('ui.fuelStock')}</span>
+          <span className="fuel-stock">
+            <span className="meter grow">
+              <span className="fill" style={{ width: `${Math.min(100, (stock / fuel.buffer) * 100)}%` }} />
+            </span>
+            <span className="mono">
+              {stock}/{fuel.buffer}
+            </span>
+          </span>
+          <span>{t('ui.fuelUse')}</span>
+          <span className="mono">{fmtNum(60 / fuel.burn)}/min</span>
+          <span>{t('ui.generates')}</span>
+          <span className={`mono ${b.burn > 0 ? 'good' : 'bad'}`}>{b.burn > 0 ? `+${mw}` : '0'} MW</span>
+        </div>
+        {full && <p className="small dim">{t('ui.fuelFull')}</p>}
+      </>
     );
   } else if (b.type === 'solar' || b.type === 'geothermal') {
     body = (

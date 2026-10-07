@@ -520,7 +520,7 @@ export const MARKET = {
 export const POWER = {
   hq: 6,
   coalPlant: 20,
-  coalBurnTime: 5,
+  coalBurnTime: 2.5, // 24 coal/min — about what one drill on normal ore digs, so its belt keeps flowing
   coalBuffer: 20,
   solar: 2.5,
   batteryCapacity: 900, // MJ

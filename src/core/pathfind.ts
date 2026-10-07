@@ -11,7 +11,7 @@ const DIRS: [number, number][] = [
 
 const CROSS_COST = 4; // crossing an existing belt is allowed (a bridge) but discouraged
 const TURN_COST = 0.05; // prefer straight runs
-const DEPOSIT_COST = 3; // keep ore deposits free for future drills
+const DEPOSIT_COST = 12; // keep deposits free for future drills: detour up to ~12 tiles rather than cross one
 const WATER_COST = 6; // bridges over water cost more money: go around when it's not far
 
 class MinHeap {

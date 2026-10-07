@@ -26,7 +26,7 @@ export interface TidyPlan {
 }
 
 // heavier crossing/turn penalties than the one-at-a-time router, plus bundling
-const TIDY_COSTS: PathCosts = { cross: 8, turn: 0.35, deposit: 3, hug: 0.15, water: 6 };
+const TIDY_COSTS: PathCosts = { cross: 8, turn: 0.35, deposit: 12, hug: 0.15, water: 6 };
 export const TIDY_ROUNDS = 4;
 const TIDY_SHUFFLES = 8;
 

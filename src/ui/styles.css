@@ -1969,3 +1969,8 @@ select:focus-visible {
 .research-list .node.locked {
   opacity: 0.85;
 }
+.fuel-stock {
+  display: flex;
+  align-items: center;
+  gap: 8px;
+}

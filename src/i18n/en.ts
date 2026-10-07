@@ -670,6 +670,10 @@ export const en = {
   'ui.researchNoneDone': 'No research finished yet.',
   'ui.researchOneAtATime': 'One research at a time — these can start when the current one finishes.',
   'news.5': 'The Research page now has tabs: Available now, Locked and Done — no more scrolling to find what you can research.',
+  'ui.fuelStock': 'In stock',
+  'ui.fuelUse': 'Burns',
+  'ui.fuelFull': 'Fuel stock is full, so the belt waits until the next lump burns. Got spare coal? Link the drill to the HQ or a warehouse too — it sends every other lump there.',
+  'news.6': 'Coal plants now burn 24 coal/min (was 12), about what one drill digs, so coal belts keep flowing. New belts also detour around ore — tap "Tidy belts" to reroute old ones.',
 };
 
 export type Dict = Record<keyof typeof en, string>;

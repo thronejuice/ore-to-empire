@@ -260,9 +260,13 @@ describe('zone buildings', () => {
     s.buildings.find((b) => b.id === f.value.id)!.recipe = 'charcoal';
     expect(createLink(s, lc.value.id, f.value.id).ok).toBe(true);
     expect(createLink(s, f.value.id, plant.value.id).ok).toBe(true);
-    run(s, 60);
+    let burned = false;
+    for (let t = 0; t < 60; t += BALANCE.tickSeconds) {
+      tick(s, BALANCE.tickSeconds);
+      if (plant.value.burn > 0) burned = true;
+    }
     expect(s.stats.produced.charcoal ?? 0).toBeGreaterThan(0);
-    expect(plant.value.burn > 0 || (plant.value.input.charcoal ?? 0) > 0).toBe(true);
+    expect(burned).toBe(true);
   });
 
   it('oil pump → refinery makes plastic', () => {
@@ -277,6 +281,22 @@ describe('zone buildings', () => {
     research(s, 'r_solar');
     run(s, 40);
     expect(s.stats.produced.plastic ?? 0).toBeGreaterThan(0);
+  });
+});
+
+describe('belt routing', () => {
+  it('goes around ore instead of over it when the detour is short', () => {
+    const s = newGame(6);
+    s.money = 1e6;
+    s.world.deposits = s.world.deposits.map(() => null);
+    const a = placeBuilding(s, 'warehouse', O + 10, O + 12);
+    const b = placeBuilding(s, 'warehouse', O + 16, O + 12);
+    if (!a.ok || !b.ok) throw new Error('place');
+    // a 5-tile wall of ore between them
+    for (let y = O + 10; y <= O + 14; y++) s.world.deposits[idx(s, O + 13, y)] = 'iron_ore';
+    const plan = planLink(s, a.value.id, b.value.id);
+    if (!plan.ok) throw new Error(plan.reason);
+    expect(plan.value.path.some(([x, y]) => s.world.deposits[idx(s, x, y)])).toBe(false);
   });
 });
 
