@@ -1,4 +1,4 @@
-import { BALANCE, BUILDINGS, type BuildingType, type CityId, type ItemId, type RecipeId, type ResearchId, type VehicleType } from './config/balance';
+import { BALANCE, BUILDINGS, TERRAIN, type BuildingType, type CityId, type ItemId, type RecipeId, type ResearchId, type VehicleType, type ZoneId } from './config/balance';
 import type { GemItemId, PerkId } from './config/meta';
 import {
   createLink,
@@ -19,7 +19,7 @@ import { buyVehicle, sellVehicle, setRoute } from './core/fleet';
 import { applyGemItem, gemItemAvailable, spendLocalGems } from './core/gems';
 import { buyPlot, plotOf } from './core/land';
 import { applyOffline, type OfflineReport } from './core/offline';
-import { buyPerk, canPrestige, prestige } from './core/prestige';
+import { buyPerk } from './core/prestige';
 import { checkQuests, isBuildingUnlocked, skipTutorial, type QuestDef } from './core/quests';
 import { cancelResearch, startResearch } from './core/research';
 import { localSave, type SaveStore } from './core/save';
@@ -27,6 +27,7 @@ import { tick, type SimEvent } from './core/sim';
 import { buildingAt, getBuilding, isUnlocked, newGame } from './core/state';
 import type { BeltView, GameState } from './core/types';
 import { applyTidy, planTidy, type TidyPlan } from './core/tidy';
+import { buyLicence, terrainAt } from './core/zones';
 import { translate, type Lang } from './i18n';
 import { sfx, setSoundEnabled, type Sfx } from './audio';
 
@@ -87,7 +88,7 @@ export interface OnlineBridge {
   signedIn(): boolean;
   spendGems(item: GemItemId): Promise<{ ok: true; gems: number } | { ok: false; reason: string }>;
   claimDaily(day: string, key: string, gems: number): Promise<{ ok: true; gems: number } | { ok: false; reason: string }>;
-  /** persists immediately (used after prestige / big changes) */
+  /** persists immediately (used after big changes) */
   saveNow?(state: GameState): void;
   /** number of players currently online, or null if not yet connected */
   onlineCount?: number | null;
@@ -279,7 +280,7 @@ export class Game {
     this.store.save(this.state);
   }
 
-  /** swap in a different state (cloud save, prestige) */
+  /** swap in a different state (cloud save, new game) */
   replaceState(state: GameState, awaySeconds = 0) {
     this.state = state;
     this.ui = { ...this.ui, mode: { kind: 'select' }, selected: null, plot: null, linkPreview: null };
@@ -420,10 +421,11 @@ export class Game {
 
   private veinCursor = -1;
 
-  buildMinerAtTile() {
+  /** build an extractor (drill, lumber camp, fishing dock…) on the tile shown in the tile sheet */
+  buildAtTile(type: BuildingType) {
     const tile = this.ui.tile;
-    if (!tile) return;
-    const r = placeBuilding(this.state, 'miner', tile[0], tile[1]);
+    if (!tile || !isBuildingUnlocked(this.state, type)) return;
+    const r = placeBuilding(this.state, type, tile[0], tile[1]);
     if (this.result(r)) {
       this.play('place');
       this.ui.tile = null;
@@ -493,7 +495,8 @@ export class Game {
       return;
     }
     this.select(hit ? hit.id : null);
-    if (!hit && x >= 0 && y >= 0 && x < this.state.world.size && y < this.state.world.size && this.state.world.deposits[y * this.state.world.size + x]) {
+    const inside = x >= 0 && y >= 0 && x < this.state.world.size && y < this.state.world.size;
+    if (!hit && inside && (this.state.world.deposits[y * this.state.world.size + x] || terrainAt(this.state, x, y) !== TERRAIN.land)) {
       this.ui.tile = [x, y];
       this.emit();
     }
@@ -684,14 +687,14 @@ export class Game {
     }
   }
 
-  sellCompany() {
-    if (!canPrestige(this.state)) return;
-    const next = prestige(this.state);
-    this.ui.panel = 'none';
-    this.replaceState(next);
-    this.online?.saveNow?.(this.state);
-    this.play('prestige');
-    this.toast(this.t('ui.prestigeDone', { n: next.prestige.count }), 'success');
+  buyLicence(zone: ZoneId) {
+    if (this.check(buyLicence(this.state, zone))) {
+      this.play('prestige');
+      this.toast(this.t('ui.licenceDone', { zone: this.t(`zone.${zone}`) }), 'success');
+      this.save();
+      this.online?.saveNow?.(this.state);
+      this.structureChanged();
+    }
   }
 
   // ---------------------------------------------------------------- gems

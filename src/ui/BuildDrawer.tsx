@@ -1,9 +1,12 @@
 import { BUILDINGS, BUILD_MENU_ORDER, POWER } from '../config/balance';
 import { isBuildingUnlocked } from '../core/quests';
+import { researchState } from '../core/research';
 import { fmtMoney, fmtNum } from '../i18n';
 import { useGame, useHighlight, useT } from './hooks';
 import { BuildingIcon } from './icons';
 import type { BuildingType } from '../config/balance';
+
+const ZONE_BUILDINGS = new Set<BuildingType>(BUILD_MENU_ORDER.slice(BUILD_MENU_ORDER.indexOf('dock') + 1));
 
 function BuildCard({ type }: { type: BuildingType }) {
   const game = useGame();
@@ -12,10 +15,11 @@ function BuildCard({ type }: { type: BuildingType }) {
   const unlocked = isBuildingUnlocked(game.state, type);
   const afford = game.state.money >= def.cost;
   const hi = useHighlight(`build-${type}`);
-  const mw = type === 'solar' ? POWER.solar : type === 'nuclear_plant' ? POWER.nuclear : POWER.coalPlant;
+  const mw = type === 'solar' ? POWER.solar : type === 'nuclear_plant' ? POWER.nuclear : type === 'geothermal' ? POWER.geothermal : POWER.coalPlant;
   const desc = t(`bd.${type}`, { mw });
   const needs = def.research && !game.state.research.done.includes(def.research) ? def.research : null;
   if (needs && !game.state.research.done.length && type !== 'dock') return null; // keep the menu short early on
+  if (needs && ZONE_BUILDINGS.has(type) && researchState(game.state, needs) === 'locked') return null; // zone gear shows up once it's in reach
   return (
     <button
       className={`build-card ${!unlocked ? 'locked' : ''} ${!afford ? 'poor' : ''} ${hi ? 'tut-pulse' : ''}`}
@@ -30,7 +34,7 @@ function BuildCard({ type }: { type: BuildingType }) {
           <span className="bc-cost mono">{fmtMoney(def.cost)}</span>
           <span className="bc-meta">
             {def.power > 0 && <span>⚡{fmtNum(def.power)} MW</span>}
-            {(type === 'coal_plant' || type === 'solar' || type === 'nuclear_plant') && <span className="good">+{mw} MW</span>}
+            {(type === 'coal_plant' || type === 'solar' || type === 'nuclear_plant' || type === 'geothermal') && <span className="good">+{mw} MW</span>}
             {(def.w > 1 || def.h > 1) && (
               <span>
                 {def.w}×{def.h}

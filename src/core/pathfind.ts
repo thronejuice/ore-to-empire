@@ -1,4 +1,4 @@
-import { BUILDINGS } from '../config/balance';
+import { BUILDINGS, TERRAIN } from '../config/balance';
 import { idx, inBounds, isUnlocked, occupancy } from './state';
 import type { Building, GameState } from './types';
 
@@ -12,6 +12,7 @@ const DIRS: [number, number][] = [
 const CROSS_COST = 4; // crossing an existing belt is allowed (a bridge) but discouraged
 const TURN_COST = 0.05; // prefer straight runs
 const DEPOSIT_COST = 3; // keep ore deposits free for future drills
+const WATER_COST = 6; // bridges over water cost more money: go around when it's not far
 
 class MinHeap {
   private k: number[] = [];
@@ -72,14 +73,17 @@ export interface PathCosts {
   deposit: number;
   /** discount for running right next to another belt (keeps belts in tidy bundles) */
   hug: number;
+  /** extra for a tile over water (a bridge) */
+  water: number;
 }
 
-export const DEFAULT_COSTS: PathCosts = { cross: CROSS_COST, turn: TURN_COST, deposit: DEPOSIT_COST, hug: 0 };
+export const DEFAULT_COSTS: PathCosts = { cross: CROSS_COST, turn: TURN_COST, deposit: DEPOSIT_COST, hug: 0, water: WATER_COST };
 
 export function findPath(state: GameState, from: Building, to: Building, costs: PathCosts = DEFAULT_COSTS): [number, number][] | null {
   const occ = occupancy(state);
   const size = state.world.size;
   const n = size * size;
+  const terrain = state.world.terrain;
   // node = cell * 4 + direction we arrived from
   const dist = new Float64Array(n * 4).fill(Infinity);
   const prev = new Int32Array(n * 4).fill(-1);
@@ -126,6 +130,7 @@ export function findPath(state: GameState, from: Building, to: Building, costs: 
         1 +
         (occ.belts[ncell] > 0 ? costs.cross : 0) +
         (state.world.deposits[ncell] ? costs.deposit : 0) +
+        (terrain && (terrain[ncell] === TERRAIN.river || terrain[ncell] === TERRAIN.sea) ? costs.water : 0) +
         (isSrc.has(cell) || d === dir ? 0 : costs.turn);
       if (costs.hug && occ.belts[ncell] === 0) {
         // beside another belt (perpendicular to our direction) → slightly cheaper

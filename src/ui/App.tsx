@@ -7,7 +7,7 @@ import { GameContext } from './hooks';
 import { BottomBar, MapTools, QuestCard, QuestDoneBanner, Toasts, TopBar } from './Hud';
 import { Inspector } from './Inspector';
 import { OfflineModal, SettingsPanel, StatsPanel, UpgradesPanel } from './Panels';
-import { ContractsPanel, DailyPanel, FleetPanel, MarketsPanel, MenuSheet, PlotSheet, PrestigePanel, ResearchPanel } from './MetaPanels';
+import { ContractsPanel, DailyPanel, FleetPanel, MarketsPanel, MenuSheet, PlotSheet, ExpansionPanel, ResearchPanel } from './MetaPanels';
 import { ShopPanel } from './ShopPanel';
 import { TileSheet } from './TileSheet';
 import { AccountPanel, ConflictModal, PaymentModal } from './OnlinePanels';
@@ -78,7 +78,7 @@ export function App() {
         <FleetPanel />
         <ContractsPanel />
         <DailyPanel />
-        <PrestigePanel />
+        <ExpansionPanel />
         <ShopPanel />
         <MenuSheet />
         <AccountPanel />

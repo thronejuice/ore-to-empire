@@ -1075,7 +1075,7 @@ button {
 }
 .tree {
   display: grid;
-  grid-template-columns: repeat(5, minmax(170px, 1fr));
+  grid-template-columns: repeat(6, minmax(170px, 1fr));
   gap: 10px;
   overflow-x: auto;
   padding-bottom: 6px;
@@ -1888,4 +1888,21 @@ select:focus-visible {
   text-align: left;
   font-size: 13px;
   line-height: 1.6;
+}
+
+/* zone licences (Expansion panel) */
+.perk.licence {
+  border: 1px solid var(--edge);
+}
+.perk.licence.owned {
+  border-color: rgba(61, 220, 151, 0.45);
+}
+.perk.licence.research {
+  opacity: 0.7;
+}
+.perk.licence .pill {
+  margin-left: 4px;
+}
+.perk.licence > .good {
+  white-space: nowrap;
 }

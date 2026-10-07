@@ -1,4 +1,4 @@
-import { useEffect, useState } from 'react';
+import { useState } from 'react';
 import {
   BALANCE,
   CITIES,
@@ -6,11 +6,14 @@ import {
   ITEMS,
   RESEARCH,
   VEHICLES,
+  ZONES,
+  ZONE_ORDER,
   storageCapacity,
   type CityId,
   type ItemId,
   type ResearchId,
   type VehicleType,
+  type ZoneId,
 } from '../config/balance';
 import { CONTRACTS, GEM_ITEMS, GEM_ITEM_ORDER, PERK_ORDER, PERKS, PRESTIGE } from '../config/meta';
 import { rerollCost } from '../core/contracts';
@@ -18,11 +21,12 @@ import { missionProgress, bonusClaimable } from '../core/daily';
 import { boostActive, cityUnlocked, hasResearch, vehicleCapacity } from '../core/economy';
 import { canServe, dockStock, docks, travelTime, vehicleCost } from '../core/fleet';
 import { gemItemAvailable } from '../core/gems';
-import { nextPlotPrice, plotForSale } from '../core/land';
+import { plotAdjacent, plotForSale, plotPrice } from '../core/land';
 import { listPrice, price } from '../core/market';
-import { canPrestige, nextShareAt, perkCost, sharesFor } from '../core/prestige';
+import { perkCost } from '../core/prestige';
 import { researchState } from '../core/research';
 import { idx, invTotal } from '../core/state';
+import { licenceState, zoneLicensed, zoneOfPlot } from '../core/zones';
 import type { DailyMission } from '../core/types';
 import { fmtClock, fmtDuration, fmtMoney, fmtNum } from '../i18n';
 import { useGame, useT } from './hooks';
@@ -30,7 +34,7 @@ import { Inv, ItemIcon } from './icons';
 import { GemIcon, NAV, NavIcon } from './nav';
 import { Modal } from './Panels';
 
-const TIERS = ['ui.tierA', 'ui.tierB', 'ui.tierC', 'ui.tierD', 'ui.tierE'];
+const TIERS = ['ui.tierA', 'ui.tierB', 'ui.tierC', 'ui.tierD', 'ui.tierE', 'ui.tierF'];
 
 // ============================================================================ research
 
@@ -408,21 +412,40 @@ export function DailyPanel() {
   );
 }
 
-// ============================================================================ prestige
+// ============================================================================ expansion (zone licences + investor perks)
 
-export function PrestigePanel() {
+function LicenceRow({ zone }: { zone: ZoneId }) {
   const game = useGame();
   const t = useT();
-  const [confirm, setConfirm] = useState(false);
-  useEffect(() => setConfirm(false), [game.ui.panel]);
+  const s = game.state;
+  const def = ZONES[zone];
+  const st = licenceState(s, zone);
+  return (
+    <div className={`perk licence ${st}`}>
+      <div>
+        <strong>{t(`zone.${zone}`)}</strong> <span className="pill mono small">+{def.shares} {t('ui.shares')}</span>
+        <p className="small dim">{t(`zone.${zone}.d`)}</p>
+        {st === 'research' && def.research && <p className="small warn">🔒 {t('ui.researchLocked', { name: t(`r.${def.research}.t`) })}</p>}
+      </div>
+      {st === 'owned' ? (
+        <span className="good small">✓ {t('ui.licenceOwned')}</span>
+      ) : (
+        <button className="btn small primary" disabled={st !== 'available' || s.money < def.licence} onClick={() => game.buyLicence(zone)}>
+          {t('ui.buyLicence')} <span className="mono">{fmtMoney(def.licence)}</span>
+        </button>
+      )}
+    </div>
+  );
+}
+
+export function ExpansionPanel() {
+  const game = useGame();
+  const t = useT();
   if (game.ui.panel !== 'prestige') return null;
   const s = game.state;
-  const earned = s.stats.totalEarned;
-  const shares = sharesFor(earned);
-  const ok = canPrestige(s);
   return (
     <Modal
-      title={t('ui.prestige')}
+      title={t('ui.expansion')}
       onClose={() => game.openPanel('none')}
       head={
         <span className="pill mono">
@@ -430,35 +453,16 @@ export function PrestigePanel() {
         </span>
       }
     >
-      <p className="small">{t('ui.prestigeIntro')}</p>
-      <ul className="small dim rules">
-        <li>{t('ui.prestigeRule1')}</li>
-        <li>{t('ui.prestigeRule2')}</li>
-        <li>{t('ui.prestigeKeeps')}</li>
-      </ul>
-      <div className="kv">
-        <span>{t('ui.runEarned')}</span>
-        <span className="mono">{fmtMoney(earned)}</span>
-        <span>{t('ui.sharesNow')}</span>
-        <span className="mono good">+{shares}</span>
-        <span />
-        <span className="small dim">{t('ui.nextShare', { money: fmtMoney(nextShareAt(earned)) })}</span>
-        {s.prestige.count > 0 && (
-          <>
-            <span />
-            <span className="small dim">{t('ui.prestigeCount', { n: s.prestige.count })}</span>
-          </>
-        )}
+      <p className="small">{t('ui.expansionIntro')}</p>
+      <div className="section-label">{t('ui.licences')}</div>
+      <div className="perks">
+        {ZONE_ORDER.map((z) => (
+          <LicenceRow key={z} zone={z} />
+        ))}
       </div>
-      {ok ? (
-        <button className={`btn big full ${confirm ? 'danger armed' : 'primary'}`} onClick={() => (confirm ? game.sellCompany() : setConfirm(true))}>
-          {confirm ? t('ui.sellConfirm') : t('ui.sellCompany', { n: shares })}
-        </button>
-      ) : (
-        <p className="warn small">{t('ui.needEarned', { money: fmtMoney(PRESTIGE.minRunEarned) })}</p>
-      )}
 
       <div className="section-label">{t('ui.perks')}</div>
+      <p className="small dim">{t('ui.sharesRule', { pct: Math.round(PRESTIGE.incomePerShare * 100) })}</p>
       <div className="perks">
         {PERK_ORDER.map((id) => {
           const lvl = s.prestige.perks[id] ?? 0;
@@ -525,8 +529,11 @@ export function PlotSheet() {
   if (!p || game.ui.mode.kind !== 'select') return null;
   const s = game.state;
   const [px, py] = p;
+  const zone = zoneOfPlot(px, py);
+  const licensed = zoneLicensed(s, zone);
   const forSale = plotForSale(s, px, py);
-  const price = nextPlotPrice(s);
+  const price = plotPrice(s, px, py);
+  const lic = licenceState(s, zone);
   const counts: Partial<Record<ItemId, number>> = {};
   const P = BALANCE.plotSize;
   for (let y = py * P; y < (py + 1) * P; y++)
@@ -534,12 +541,15 @@ export function PlotSheet() {
       const d = s.world.deposits[idx(s, x, y)];
       if (d) counts[d] = (counts[d] ?? 0) + 1;
     }
+  const status = forSale ? t('ui.landForSale') : !licensed ? t('ui.needLicenceShort') : t('ui.landNotForSale');
   return (
     <aside className="sheet inspector" role="dialog">
       <div className="sheet-head">
         <div className="insp-title">
-          <h2>{t('ui.land')}</h2>
-          <span className={`status ${forSale ? 'good' : 'warn'}`}>{forSale ? t('ui.landForSale') : t('ui.landNotForSale')}</span>
+          <h2>
+            {t('ui.land')} · {t(`zone.${zone}`)}
+          </h2>
+          <span className={`status ${forSale ? 'good' : 'warn'}`}>{status}</span>
         </div>
         <button className="icon-btn" onClick={() => game.select(null)} aria-label={t('ui.close')}>
           ✕
@@ -550,8 +560,23 @@ export function PlotSheet() {
           <span>{t('ui.deposits')}</span>
           <Inv inv={counts} empty={t('ui.none')} />
         </div>
-        <p className="small dim">{t('ui.landHint')}</p>
+        {zone !== 'home' && <p className="small dim">{t(`zone.${zone}.d`)}</p>}
+        {!licensed && (
+          <p className="small warn">
+            {lic === 'research' && ZONES[zone].research
+              ? t('ui.licenceNeedsResearch', { name: t(`r.${ZONES[zone].research}.t`) })
+              : t('ui.licenceNeeded', { zone: t(`zone.${zone}`), money: fmtMoney(ZONES[zone].licence) })}
+          </p>
+        )}
+        {licensed && !forSale && !plotAdjacent(s, px, py) && <p className="small dim">{t('ui.landHint')}</p>}
       </div>
+      {!licensed && lic === 'available' && (
+        <div className="sheet-actions">
+          <button className="btn primary" disabled={s.money < ZONES[zone].licence} onClick={() => game.buyLicence(zone)}>
+            {t('ui.buyLicence')} <span className="mono">{fmtMoney(ZONES[zone].licence)}</span>
+          </button>
+        </div>
+      )}
       {forSale && (
         <div className="sheet-actions">
           <button className="btn primary" disabled={s.money < price} onClick={() => game.buyPlot()}>

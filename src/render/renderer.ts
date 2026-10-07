@@ -1,6 +1,22 @@
 import { Application, Container, Graphics, Text } from 'pixi.js';
-import { BALANCE, BUILDINGS, ITEMS, POWER, VEINS, beltSpeed, storageCapacity, type BuildingType, type ItemId } from '../config/balance';
-import { nextPlotPrice, plotForSale } from '../core/land';
+import {
+  BALANCE,
+  BUILDINGS,
+  EXTRACTORS,
+  ITEMS,
+  POWER,
+  TERRAIN,
+  VEINS,
+  ZONES,
+  ZONE_ORDER,
+  beltSpeed,
+  storageCapacity,
+  type BuildingType,
+  type DepositId,
+  type ItemId,
+} from '../config/balance';
+import { plotForSale, plotPrice } from '../core/land';
+import { extractAt, isExtractor, zoneLicensed, zoneOfPlot, zoneOfTile } from '../core/zones';
 import { plotsPerRow } from '../core/state';
 import { gradeAt } from '../core/veins';
 import { canPlace, linkCarriesIn } from '../core/actions';
@@ -9,7 +25,7 @@ import { getBuilding, hqPosition, idx, isUnlocked } from '../core/state';
 import type { Belt, Building } from '../core/types';
 import type { Game } from '../game';
 import { fmtMoney } from '../i18n';
-import { C, DEPOSIT_COLORS, TILE } from './theme';
+import { C, DEPOSIT_COLORS, TILE, WATER, ZONE_GROUND } from './theme';
 
 interface Floater {
   text: Text;
@@ -252,17 +268,36 @@ export class Renderer {
     const s = this.game.state;
     const g = this.ground.clear();
     const n = s.world.size;
+    const terrain = s.world.terrain;
     for (let y = 0; y < n; y++) {
       for (let x = 0; x < n; x++) {
         const px = x * TILE;
         const py = y * TILE;
-        if (!isUnlocked(s, x, y)) {
-          g.rect(px, py, TILE, TILE).fill(C.locked);
-          if ((x + y) % 2 === 0) g.moveTo(px, py + TILE).lineTo(px + TILE, py).stroke({ width: 1, color: C.lockedHatch });
+        const locked = !isUnlocked(s, x, y);
+        const t = terrain?.[idx(s, x, y)] ?? TERRAIN.land;
+        if (t === TERRAIN.river || t === TERRAIN.sea) {
+          this.water(g, x, y, t === TERRAIN.river, locked);
           continue;
         }
-        g.rect(px, py, TILE, TILE).fill((x + y) % 2 ? C.ground : C.groundAlt);
-        g.rect(px, py, TILE, TILE).stroke({ width: 1, color: C.gridLine, alpha: 0.6 });
+        const zg = ZONE_GROUND[zoneOfTile(x, y)];
+        if (locked) {
+          g.rect(px, py, TILE, TILE).fill(zg[2]);
+          if ((x + y) % 2 === 0) g.moveTo(px, py + TILE).lineTo(px + TILE, py).stroke({ width: 1, color: C.lockedHatch, alpha: 0.7 });
+        } else {
+          g.rect(px, py, TILE, TILE).fill((x + y) % 2 ? zg[0] : zg[1]);
+          g.rect(px, py, TILE, TILE).stroke({ width: 1, color: C.gridLine, alpha: 0.6 });
+        }
+        if (t === TERRAIN.vent) {
+          const cx = px + TILE / 2;
+          const cy = py + TILE / 2;
+          g.circle(cx, cy, 13).fill({ color: WATER.vent, alpha: locked ? 0.6 : 1 });
+          g.circle(cx, cy, 7).fill({ color: WATER.ventGlow, alpha: locked ? 0.25 : 0.55 });
+          for (let k = 0; k < 4; k++) {
+            const a = (k * Math.PI) / 2 + 0.4;
+            g.moveTo(cx + Math.cos(a) * 8, cy + Math.sin(a) * 8).lineTo(cx + Math.cos(a) * 15, cy + Math.sin(a) * 15);
+          }
+          g.stroke({ width: 1.5, color: WATER.ventGlow, alpha: locked ? 0.2 : 0.45 });
+        }
       }
     }
     // deposits
@@ -270,24 +305,7 @@ export class Renderer {
       for (let x = 0; x < n; x++) {
         const d = s.world.deposits[idx(s, x, y)];
         if (!d) continue;
-        const col = DEPOSIT_COLORS[d];
-        const px = x * TILE;
-        const py = y * TILE;
-        const locked = !isUnlocked(s, x, y);
-        g.roundRect(px + 2, py + 2, TILE - 4, TILE - 4, 6).fill({ color: col.fill, alpha: locked ? 0.45 : 1 });
-        // deterministic flecks: richer ore = more, bigger flecks
-        const grade = gradeAt(s, x, y);
-        const count = [3, 6, 10][grade];
-        const size = [2.4, 3, 3.4][grade];
-        let h = (x * 73856093) ^ (y * 19349663);
-        for (let i = 0; i < count; i++) {
-          h = (h * 1103515245 + 12345) & 0x7fffffff;
-          const fx = px + 7 + (h % 26);
-          h = (h * 1103515245 + 12345) & 0x7fffffff;
-          const fy = py + 7 + (h % 26);
-          g.poly([fx, fy - size, fx + size, fy, fx, fy + size, fx - size, fy]).fill({ color: col.fleck, alpha: locked ? 0.3 : grade === 0 ? 0.6 : 0.9 });
-        }
-        if (grade === 2 && !locked) g.roundRect(px + 3, py + 3, TILE - 6, TILE - 6, 5).stroke({ width: 1.5, color: col.fleck, alpha: 0.55 });
+        this.deposit(g, d, x, y, !isUnlocked(s, x, y));
       }
     }
     // plot borders of the owned land
@@ -306,6 +324,99 @@ export class Renderer {
         if (!own(px - 1, py)) g.moveTo(x0, y0).lineTo(x0, y0 + L).stroke(st);
         if (!own(px + 1, py)) g.moveTo(x0 + L, y0).lineTo(x0 + L, y0 + L).stroke(st);
       }
+    // zone edges (dashed), so the five regions read at a glance
+    for (let py = 0; py < plots; py++)
+      for (let px = 0; px < plots; px++) {
+        const z = zoneOfPlot(px, py);
+        const x0 = px * p * TILE;
+        const y0 = py * p * TILE;
+        const L = p * TILE;
+        const dash = (ax: number, ay: number, bx: number, by: number) => {
+          for (let d = 0; d < L; d += 16) {
+            const t0 = d / L;
+            const t1 = Math.min(1, (d + 8) / L);
+            g.moveTo(ax + (bx - ax) * t0, ay + (by - ay) * t0).lineTo(ax + (bx - ax) * t1, ay + (by - ay) * t1);
+          }
+        };
+        if (px + 1 < plots && zoneOfPlot(px + 1, py) !== z) dash(x0 + L, y0, x0 + L, y0 + L);
+        if (py + 1 < plots && zoneOfPlot(px, py + 1) !== z) dash(x0, y0 + L, x0 + L, y0 + L);
+      }
+    g.stroke({ width: 2, color: 0xc9d1dc, alpha: 0.18 });
+  }
+
+  private water(g: Graphics, x: number, y: number, river: boolean, locked: boolean) {
+    const px = x * TILE;
+    const py = y * TILE;
+    g.rect(px, py, TILE, TILE).fill(locked ? (river ? WATER.lockedRiver : WATER.lockedSea) : river ? WATER.river : WATER.sea);
+    // two little wave strokes per tile, offset by position so the surface doesn't look tiled
+    let h = (x * 73856093) ^ (y * 19349663);
+    h = (h * 1103515245 + 12345) & 0x7fffffff;
+    const wx = px + 6 + (h % 14);
+    const wy = py + 10 + ((h >> 4) % 18);
+    const col = river ? WATER.riverWave : WATER.seaWave;
+    g.moveTo(wx, wy).bezierCurveTo(wx + 4, wy - 3, wx + 8, wy + 3, wx + 12, wy).stroke({ width: 1.5, color: col, alpha: locked ? 0.25 : 0.6 });
+    g.moveTo(wx + 8, wy + 12).bezierCurveTo(wx + 12, wy + 9, wx + 16, wy + 15, wx + 20, wy + 12).stroke({ width: 1.5, color: col, alpha: locked ? 0.2 : 0.45 });
+  }
+
+  private deposit(g: Graphics, d: DepositId, x: number, y: number, locked: boolean) {
+    const col = DEPOSIT_COLORS[d];
+    const px = x * TILE;
+    const py = y * TILE;
+    const cx = px + TILE / 2;
+    const cy = py + TILE / 2;
+    const a = locked ? 0.45 : 1;
+    let h = (x * 73856093) ^ (y * 19349663);
+    const rnd = () => {
+      h = (h * 1103515245 + 12345) & 0x7fffffff;
+      return h;
+    };
+    if (d === 'wood') {
+      // a little grove: three overlapping canopies with a trunk
+      g.rect(cx - 2, cy + 4, 4, 9).fill({ color: 0x5a3d22, alpha: a });
+      const offs = [
+        [-6, 0, 9],
+        [6, -2, 9],
+        [0, -8, 10],
+      ];
+      for (const [ox, oy, r] of offs) g.circle(cx + ox + (rnd() % 3) - 1, cy + oy, r).fill({ color: col.fill, alpha: a });
+      for (const [ox, oy, r] of offs) g.circle(cx + ox - 2, cy + oy - 2, r * 0.55).fill({ color: col.fleck, alpha: a * 0.8 });
+      return;
+    }
+    if (d === 'flower') {
+      g.roundRect(px + 3, py + 3, TILE - 6, TILE - 6, 8).fill({ color: col.fill, alpha: a });
+      for (let i = 0; i < 4; i++) {
+        const fx = px + 9 + (rnd() % 22);
+        const fy = py + 9 + (rnd() % 22);
+        const colr = [0xf07ab8, 0xffd34a, 0xffffff, 0xb58aff][rnd() % 4];
+        for (let k = 0; k < 5; k++) {
+          const ang = (k * Math.PI * 2) / 5;
+          g.circle(fx + Math.cos(ang) * 2.6, fy + Math.sin(ang) * 2.6, 2).fill({ color: colr, alpha: a });
+        }
+        g.circle(fx, fy, 1.4).fill({ color: 0xffc94a, alpha: a });
+      }
+      return;
+    }
+    if (d === 'crude_oil') {
+      g.ellipse(cx, cy + 2, 15, 11).fill({ color: col.fill, alpha: a });
+      g.ellipse(cx - 4, cy - 1, 6, 3).fill({ color: col.fleck, alpha: a * 0.6 });
+      g.ellipse(cx + 5, cy + 5, 3, 1.5).fill({ color: 0xffffff, alpha: a * 0.18 });
+      return;
+    }
+    g.roundRect(px + 2, py + 2, TILE - 4, TILE - 4, 6).fill({ color: col.fill, alpha: a });
+    // deterministic flecks: richer ore = more, bigger flecks
+    const grade = gradeAt(this.game.state, x, y);
+    const count = [3, 6, 10][grade];
+    const size = [2.4, 3, 3.4][grade];
+    const fa = locked ? 0.3 : grade === 0 ? 0.6 : 0.9;
+    for (let i = 0; i < count; i++) {
+      const fx = px + 7 + (rnd() % 26);
+      const fy = py + 7 + (rnd() % 26);
+      if (d === 'clay') g.circle(fx, fy, size * 1.1).fill({ color: col.fleck, alpha: fa }); // soft lumps
+      else if (d === 'sulfur') g.poly([fx, fy - size * 1.2, fx + size, fy + size * 0.8, fx - size, fy + size * 0.8]).fill({ color: col.fleck, alpha: fa }); // crystals
+      else if (d === 'obsidian') g.poly([fx, fy - size * 1.5, fx + size * 0.6, fy, fx, fy + size * 1.5, fx - size * 0.6, fy]).fill({ color: col.fleck, alpha: fa }); // shards
+      else g.poly([fx, fy - size, fx + size, fy, fx, fy + size, fx - size, fy]).fill({ color: col.fleck, alpha: fa });
+    }
+    if (grade === 2 && !locked) g.roundRect(px + 3, py + 3, TILE - 6, TILE - 6, 5).stroke({ width: 1.5, color: col.fleck, alpha: 0.55 });
   }
 
   /** 0..1 visibility of a belt under the current view mode */
@@ -412,20 +523,40 @@ export class Renderer {
     const s = this.game.state;
     const n = plotsPerRow(s);
     const P = BALANCE.plotSize * TILE;
-    const price = nextPlotPrice(s);
+    const style = { fontFamily: 'IBM Plex Sans Thai, sans-serif', fontSize: 15, fontWeight: '600' as const, fill: 0xc9d1dc, align: 'center' as const, lineHeight: 20 };
     for (let py = 0; py < n; py++)
       for (let px = 0; px < n; px++) {
         if (!plotForSale(s, px, py)) continue;
-        const t = new Text({
-          text: `${this.game.t('ui.landForSale')}\n${fmtMoney(price)}`,
-          style: { fontFamily: 'IBM Plex Sans Thai, sans-serif', fontSize: 15, fontWeight: '600', fill: 0xc9d1dc, align: 'center', lineHeight: 20 },
-          resolution: 3,
-        });
+        const t = new Text({ text: `${this.game.t('ui.landForSale')}\n${fmtMoney(plotPrice(s, px, py))}`, style, resolution: 3 });
         t.anchor.set(0.5);
         t.alpha = 0.75;
         t.position.set(px * P + P / 2, py * P + P / 2);
         this.labels.addChild(t);
       }
+    // one big name + licence price over each zone that isn't licensed yet
+    for (const zone of ZONE_ORDER) {
+      if (zoneLicensed(s, zone)) continue;
+      let sx = 0;
+      let sy = 0;
+      let c = 0;
+      for (let py = 0; py < n; py++)
+        for (let px = 0; px < n; px++)
+          if (zoneOfPlot(px, py) === zone) {
+            sx += px;
+            sy += py;
+            c++;
+          }
+      if (!c) continue;
+      const t = new Text({
+        text: `${this.game.t(`zone.${zone}`)}\n${this.game.t('ui.licenceTag', { money: fmtMoney(ZONES[zone].licence) })}`,
+        style: { ...style, fontSize: 30, fontWeight: '700', lineHeight: 38 },
+        resolution: 2,
+      });
+      t.anchor.set(0.5);
+      t.alpha = 0.45;
+      t.position.set((sx / c + 0.5) * P, (sy / c + 0.5) * P);
+      this.labels.addChild(t);
+    }
   }
 
   private drawBuilding(g: Graphics, b: Building) {
@@ -498,6 +629,40 @@ export class Renderer {
           t.position.set(cx, cy);
           this.labels.addChild(t);
         }
+        break;
+      case 'fishing_dock':
+        g.rect(cx - 14, cy + 2, 28, 6).fill(0x5a3d22);
+        g.rect(cx - 11, cy + 8, 3, 8).rect(cx + 8, cy + 8, 3, 8).fill(0x3d2a16);
+        g.moveTo(cx + 6, cy + 2).lineTo(cx + 14, cy - 14).stroke({ width: 2, color: 0x9a6b3f });
+        break;
+      case 'seaweed_farm':
+        g.rect(cx - 14, cy - 12, 28, 26).stroke({ width: 1.5, color: 0x3f9a5c, alpha: 0.8 });
+        g.moveTo(cx - 14, cy).lineTo(cx + 14, cy).stroke({ width: 1, color: 0x3f9a5c, alpha: 0.6 });
+        break;
+      case 'clay_pit':
+        g.ellipse(cx, cy + 3, 13, 9).fill(0x4a2e22).stroke({ width: 1.5, color: 0xb87a56 });
+        break;
+      case 'lumber_camp':
+        g.rect(cx - 13, cy + 4, 26, 8).fill(0x5a3d22);
+        g.circle(cx - 8, cy + 8, 4).circle(cx + 8, cy + 8, 4).fill(0x9a6b3f);
+        break;
+      case 'flower_garden':
+        g.roundRect(cx - 13, cy - 11, 26, 24, 4).fill(0x24331f).stroke({ width: 1.5, color: 0xf07ab8, alpha: 0.7 });
+        break;
+      case 'oil_pump':
+        g.poly([cx - 12, cy + 14, cx - 4, cy - 6, cx + 4, cy + 14]).stroke({ width: 2, color: 0x8a7a9a });
+        g.rect(cx + 6, cy + 6, 8, 8).fill(0x2b2530).stroke({ width: 1, color: 0x8a7a9a });
+        break;
+      case 'refinery':
+        g.roundRect(cx - 28, cy - 4, 30, 24, 4).fill(0x3a2a1c).stroke({ width: 1.5, color: 0xd98a3f });
+        g.rect(cx + 8, cy - 26, 10, 46).fill(0x4a3a2a).stroke({ width: 1.5, color: 0xd98a3f });
+        g.circle(cx - 18, cy - 14, 9).fill(0x4a3a2a).stroke({ width: 1.5, color: 0xd98a3f });
+        g.circle(cx - 2, cy - 16, 7).fill(0x4a3a2a).stroke({ width: 1.5, color: 0xd98a3f });
+        break;
+      case 'geothermal':
+        g.roundRect(cx - 28, cy - 2, 56, 22, 4).fill(0x3a1c18).stroke({ width: 1.5, color: 0xff5a3d });
+        g.poly([cx - 22, cy - 2, cx - 16, cy - 24, cx - 4, cy - 24, cx + 2, cy - 2]).fill(0x4a2a24).stroke({ width: 1.5, color: 0xff5a3d });
+        g.rect(cx + 10, cy - 18, 8, 16).fill(0x4a2a24);
         break;
       default:
         break;
@@ -619,8 +784,54 @@ export class Renderer {
       } else if (b.type === 'solar') {
         const sh = (this.time * 0.25 + b.id * 0.13) % 1;
         g.rect(cx - 13 + sh * 22, cy - 11, 4, 20).fill({ color: 0xffffff, alpha: 0.12 });
+      } else if (b.type === 'fishing_dock') {
+        const bob = working ? Math.sin(this.time * 3 + b.id) * 2 : 0;
+        g.moveTo(cx + 14, cy - 14).lineTo(cx + 15, cy + 6 + bob).stroke({ width: 1, color: 0xdfe6ee, alpha: 0.7 });
+        g.circle(cx + 15, cy + 7 + bob, 2.5).fill(C.red);
+      } else if (b.type === 'seaweed_farm') {
+        for (let k = 0; k < 4; k++) {
+          const sx = cx - 10 + k * 7;
+          const sway = Math.sin(this.time * 2 * (working ? 1 : 0.2) + k) * 3;
+          g.moveTo(sx, cy + 12).bezierCurveTo(sx + sway, cy + 4, sx - sway, cy - 2, sx + sway, cy - 9).stroke({ width: 2.5, color: 0x5fc07a, cap: 'round' });
+        }
+      } else if (b.type === 'clay_pit') {
+        const dig = working ? Math.sin(spin * 2) * 4 : 0;
+        g.moveTo(cx - 2, cy - 12 + dig).lineTo(cx + 4, cy + 2 + dig).stroke({ width: 2.5, color: 0x9fb0c4, cap: 'round' });
+        g.ellipse(cx + 4, cy + 3 + dig, 4, 2.5).fill(0xb87a56);
+      } else if (b.type === 'lumber_camp') {
+        g.star(cx, cy - 4, 10, 11, 8, spin).fill(0x9fb0c4).stroke({ width: 1, color: 0x5d6b7d });
+        g.circle(cx, cy - 4, 3).fill(0x2c3440);
+      } else if (b.type === 'flower_garden') {
+        for (let k = 0; k < 3; k++) {
+          const fx = cx - 7 + k * 7;
+          const fy = cy - 2 + (k % 2) * 6;
+          const bloom = 2 + (working ? 0.8 * Math.sin(this.time * 2 + k + b.id) : 0);
+          for (let j = 0; j < 5; j++) {
+            const ang = (j * Math.PI * 2) / 5 + spin * 0.2;
+            g.circle(fx + Math.cos(ang) * bloom, fy + Math.sin(ang) * bloom, 1.8).fill([0xf07ab8, 0xffd34a, 0xb58aff][k]);
+          }
+          g.circle(fx, fy, 1.2).fill(0xffc94a);
+        }
+      } else if (b.type === 'oil_pump') {
+        const rock = working ? Math.sin(this.time * 2.5 + b.id) * 0.35 : 0;
+        const hx = cx - 4;
+        const hy = cy - 6;
+        const ex = Math.cos(rock) * 14;
+        const ey = Math.sin(rock) * 14;
+        g.moveTo(hx - ex, hy - ey).lineTo(hx + ex, hy + ey).stroke({ width: 3, color: 0xc4b8d8, cap: 'round' });
+        g.circle(hx - ex, hy - ey + 2, 3.5).fill(0x8a7a9a);
+        g.circle(hx, hy, 2).fill(C.orange);
+      } else if (b.type === 'refinery' && working) {
+        const fl = 0.6 + 0.4 * Math.sin(this.time * 9 + b.id);
+        g.poly([cx + 13, cy - 26, cx + 10, cy - 34 - fl * 6, cx + 13, cy - 31, cx + 16, cy - 36 - fl * 5]).fill({ color: 0xffa23d, alpha: 0.9 });
+      } else if (b.type === 'geothermal') {
+        for (let k = 0; k < 3; k++) {
+          const t = (this.time * 0.5 + k / 3) % 1;
+          g.circle(cx - 10 + Math.sin(t * 5 + k) * 3, cy - 26 - t * 26, 5 + t * 8).fill({ color: 0xdfe6ee, alpha: 0.3 * (1 - t) });
+        }
+        g.circle(cx + 14, cy - 10, 3).fill({ color: WATER.ventGlow, alpha: 0.5 + 0.3 * Math.sin(this.time * 4) });
       }
-      if (b.type !== 'hq' && b.type !== 'depot' && b.type !== 'solar') {
+      if (b.type !== 'hq' && b.type !== 'depot' && b.type !== 'solar' && b.type !== 'geothermal') {
         const col = STATUS_COLOR[b.status] ?? C.textDim;
         const pulse = b.status === 'output_full' || b.status === 'no_fuel' ? 0.5 + 0.5 * Math.sin(this.time * 8) : 1;
         g.circle(b.x * TILE + 9, b.y * TILE + 13, 3).fill({ color: col, alpha: pulse });
@@ -697,6 +908,63 @@ export class Renderer {
         g.roundRect(x - r * 1.3, y - r * 0.55, r * 2.6, r * 1.1, r * 0.5).fill(col).stroke(edge);
         g.circle(x - r * 0.7, y + r * 0.55, r * 0.3).circle(x + r * 0.7, y + r * 0.55, r * 0.3).fill(0x10141a);
         break;
+      case 'fish':
+      case 'sea_fish':
+        g.ellipse(x - r * 0.15, y, r, r * 0.55).fill(col).stroke(edge);
+        g.poly([x + r * 0.7, y, x + r * 1.25, y - r * 0.55, x + r * 1.25, y + r * 0.55]).fill(col);
+        g.circle(x - r * 0.6, y - r * 0.12, r * 0.14).fill(0x10141a);
+        break;
+      case 'wood':
+        g.roundRect(x - r * 1.1, y - r * 0.45, r * 2.2, r * 0.9, r * 0.45).fill(col).stroke(edge);
+        g.circle(x + r * 0.75, y, r * 0.32).fill(0xd9b07a);
+        break;
+      case 'flower':
+      case 'perfume':
+        if (item === 'perfume') {
+          g.roundRect(x - r * 0.6, y - r * 0.3, r * 1.2, r * 1.2, 2).fill(col).stroke(edge);
+          g.rect(x - r * 0.25, y - r * 0.75, r * 0.5, r * 0.45).fill(0xffd34a);
+        } else {
+          for (let k = 0; k < 5; k++) {
+            const a = (k * Math.PI * 2) / 5;
+            g.circle(x + Math.cos(a) * r * 0.5, y + Math.sin(a) * r * 0.5, r * 0.42).fill(col);
+          }
+          g.circle(x, y, r * 0.3).fill(0xffc94a);
+        }
+        break;
+      case 'gold_bar':
+        g.poly([x - r, y + r * 0.55, x - r * 0.7, y - r * 0.55, x + r * 0.7, y - r * 0.55, x + r, y + r * 0.55]).fill(col).stroke(edge);
+        break;
+      case 'brick':
+        g.rect(x - r, y - r * 0.5, r * 2, r).fill(col).stroke(edge);
+        break;
+      case 'plastic':
+        g.circle(x - r * 0.4, y - r * 0.2, r * 0.5).circle(x + r * 0.4, y + r * 0.1, r * 0.5).circle(x - r * 0.05, y + r * 0.5, r * 0.45).fill(col).stroke(edge);
+        break;
+      case 'lens':
+        g.circle(x, y, r * 0.9).fill({ color: col, alpha: 0.6 }).stroke({ width: 1.5, color: col });
+        g.moveTo(x - r * 0.4, y - r * 0.1).lineTo(x - r * 0.1, y - r * 0.45).stroke({ width: 1.2, color: 0xffffff, alpha: 0.85 });
+        break;
+      case 'rocket_fuel':
+      case 'canned_food':
+        g.roundRect(x - r * 0.65, y - r * 0.85, r * 1.3, r * 1.7, 2).fill(col).stroke(edge);
+        g.rect(x - r * 0.65, y - r * 0.2, r * 1.3, r * 0.4).fill(item === 'canned_food' ? 0xff8a3d : 0xffd34a);
+        break;
+      case 'jewelry':
+        g.circle(x, y + r * 0.2, r * 0.75).stroke({ width: 2, color: col });
+        g.poly([x, y - r * 1.1, x + r * 0.4, y - r * 0.55, x, y - r * 0.2, x - r * 0.4, y - r * 0.55]).fill(0x7fe3ff);
+        break;
+      case 'adv_chip':
+        g.rect(x - r * 0.9, y - r * 0.9, r * 1.8, r * 1.8).fill(col).stroke(edge);
+        g.rect(x - r * 0.4, y - r * 0.4, r * 0.8, r * 0.8).fill(0xffd34a);
+        break;
+      case 'satellite':
+        g.rect(x - r * 0.35, y - r * 0.45, r * 0.7, r * 0.9).fill(col).stroke(edge);
+        g.rect(x - r * 1.3, y - r * 0.3, r * 0.8, r * 0.6).rect(x + r * 0.5, y - r * 0.3, r * 0.8, r * 0.6).fill(0x2f6aae);
+        break;
+      case 'rocket':
+        g.poly([x, y - r * 1.3, x + r * 0.45, y - r * 0.5, x + r * 0.45, y + r * 0.7, x - r * 0.45, y + r * 0.7, x - r * 0.45, y - r * 0.5]).fill(col).stroke(edge);
+        g.poly([x - r * 0.45, y + r * 0.2, x - r * 0.9, y + r * 0.9, x - r * 0.45, y + r * 0.7]).poly([x + r * 0.45, y + r * 0.2, x + r * 0.9, y + r * 0.9, x + r * 0.45, y + r * 0.7]).fill(C.red);
+        break;
       case 'wire':
         g.moveTo(x - r, y + r * 0.4)
           .bezierCurveTo(x - r * 0.7, y - r, x - r * 0.3, y - r, x - r * 0.25, y + r * 0.4)
@@ -735,12 +1003,13 @@ export class Renderer {
 
     const mode = ui.mode;
     if (mode.kind === 'build') {
-      if (mode.type === 'miner') {
-        // highlight usable deposits
+      if (isExtractor(mode.type) || mode.type === 'geothermal') {
+        // highlight the tiles this building can go on
+        const afford = s.money >= BUILDINGS[mode.type].cost;
         for (let y = 0; y < s.world.size; y++)
           for (let x = 0; x < s.world.size; x++) {
-            if (!s.world.deposits[idx(s, x, y)] || !isUnlocked(s, x, y)) continue;
-            if (!canPlace(s, 'miner', x, y).ok && s.money >= BUILDINGS.miner.cost) continue;
+            if (!this.spotFor(mode.type, x, y) || !isUnlocked(s, x, y)) continue;
+            if (afford && !canPlace(s, mode.type, x, y).ok) continue;
             g.roundRect(x * TILE + 2, y * TILE + 2, TILE - 4, TILE - 4, 6).stroke({ width: 2, color: C.amber, alpha: 0.35 + 0.5 * pulse });
           }
       }
@@ -751,12 +1020,12 @@ export class Renderer {
       const mb = getBuilding(s, mode.id);
       if (mb) {
         this.outline(g, mb, C.orange, 0.5 + 0.5 * pulse);
-        if (mb.type === 'miner') {
-          // drills can only go onto deposits: show the free ones
+        if (isExtractor(mb.type)) {
+          // extractors can only go onto their resource: show the free spots
           for (let y = 0; y < s.world.size; y++)
             for (let x = 0; x < s.world.size; x++) {
-              if (!s.world.deposits[idx(s, x, y)] || (x === mb.x && y === mb.y)) continue;
-              if (!canPlace(s, 'miner', x, y, mb).ok) continue;
+              if (!this.spotFor(mb.type, x, y) || (x === mb.x && y === mb.y)) continue;
+              if (!canPlace(s, mb.type, x, y, mb).ok) continue;
               g.roundRect(x * TILE + 2, y * TILE + 2, TILE - 4, TILE - 4, 6).stroke({ width: 2, color: C.amber, alpha: 0.35 + 0.5 * pulse });
             }
         }
@@ -807,6 +1076,14 @@ export class Renderer {
         }
       }
     }
+  }
+
+  /** is x,y the kind of tile this building needs (ignoring whether it's free)? */
+  private spotFor(type: BuildingType, x: number, y: number): boolean {
+    const s = this.game.state;
+    if (type === 'geothermal') return s.world.terrain?.[idx(s, x, y)] === TERRAIN.vent;
+    if (!EXTRACTORS[type]) return false;
+    return extractAt(s, type, x, y) !== null;
   }
 
   private outline(g: Graphics, b: Building, color: number, alpha: number) {

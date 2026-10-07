@@ -1,7 +1,9 @@
 import {
   BALANCE,
   BUILDINGS,
+  EXTRACTORS,
   MOVE,
+  TERRAIN,
   RESEARCH,
   ITEMS,
   RECIPES,
@@ -16,6 +18,12 @@ import { beltPoints, findPath } from './pathfind';
 import { getBuilding, idx, inBounds, invalidateOccupancy, isUnlocked, makeBuilding, occupancy } from './state';
 import { acceptsType } from './sim';
 import type { Belt, Building, GameState } from './types';
+import { beltCost, extractAt, extractedItem, isExtractor, terrainAt, waterAt } from './zones';
+
+function coversVent(state: GameState, x: number, y: number, w: number, h: number): boolean {
+  for (let dy = 0; dy < h; dy++) for (let dx = 0; dx < w; dx++) if (terrainAt(state, x + dx, y + dy) === TERRAIN.vent) return true;
+  return false;
+}
 
 /** Result of an action: ok, or a translation key explaining why not. */
 export type ActionResult<T = undefined> = { ok: true; value: T } | { ok: false; reason: string };
@@ -51,8 +59,15 @@ export function canPlace(state: GameState, type: BuildingType, x: number, y: num
       if (occ.belts[i] - (ownBeltCells.get(i) ?? 0) > 0) return fail('err.beltHere');
     }
   }
-  if (type === 'miner' && !state.world.deposits[idx(state, x, y)]) return fail('err.needDeposit');
-  if (type === 'miner' && state.world.deposits[idx(state, x, y)] === 'uranium_ore' && !hasResearch(state, 'r_nuclear')) return fail('err.needResearch');
+  const ex = EXTRACTORS[type];
+  if (ex) {
+    const item = extractAt(state, type, x, y);
+    if (!item) return fail(type === 'miner' ? 'err.needDeposit' : `place.${type}`);
+    if (item === 'uranium_ore' && !hasResearch(state, 'r_nuclear')) return fail('err.needResearch');
+  } else {
+    for (let dy = 0; dy < def.h; dy++) for (let dx = 0; dx < def.w; dx++) if (waterAt(state, x + dx, y + dy)) return fail('err.water');
+    if (type === 'geothermal' && !coversVent(state, x, y, def.w, def.h)) return fail('place.geothermal');
+  }
   if (!ignore && state.money < def.cost) return fail('err.noMoney');
   return ok(undefined);
 }
@@ -60,7 +75,7 @@ export function canPlace(state: GameState, type: BuildingType, x: number, y: num
 /**
  * Moves a building, keeping its level, recipe, contents and belts. Belts are
  * re-routed to the new spot; items riding them stay on (spread along the new
- * length). Moving is free except for belt tiles beyond the old lengths.
+ * length). Moving costs the fee plus whatever the new routes cost beyond the old ones.
  * Nothing changes if any belt can't reach the new spot.
  */
 export function moveBuilding(state: GameState, id: number, x: number, y: number): ActionResult<{ cost: number }> {
@@ -74,7 +89,7 @@ export function moveBuilding(state: GameState, id: number, x: number, y: number)
 
   const own = state.belts.filter((belt) => belt.from === id || belt.to === id);
   const oldPos = { x: b.x, y: b.y };
-  const oldTiles = own.reduce((a, belt) => a + Math.max(1, belt.path.length), 0);
+  const oldCost = own.reduce((a, belt) => a + beltCost(state, belt.path), 0);
 
   // take the building's belts off the map, move it, then route each belt again
   state.belts = state.belts.filter((belt) => belt.from !== id && belt.to !== id);
@@ -83,7 +98,7 @@ export function moveBuilding(state: GameState, id: number, x: number, y: number)
   invalidateOccupancy(state);
 
   const rerouted: Belt[] = [];
-  let newTiles = 0;
+  let newCost = 0;
   for (const belt of own) {
     const from = getBuilding(state, belt.from)!;
     const to = getBuilding(state, belt.to)!;
@@ -102,9 +117,9 @@ export function moveBuilding(state: GameState, id: number, x: number, y: number)
     const nb = { ...belt, path, points, length, items: belt.items.map((it) => ({ ...it, pos: Math.min(length, it.pos * scale) })) };
     rerouted.push(nb);
     state.belts.push(nb); // later belts see this one (they may bridge over it)
-    newTiles += Math.max(1, path.length);
+    newCost += beltCost(state, path);
   }
-  const cost = fee + Math.max(0, newTiles - oldTiles) * BALANCE.beltCostPerTile;
+  const cost = fee + Math.max(0, newCost - oldCost);
   if (state.money < cost) {
     state.belts = state.belts.filter((x2) => !rerouted.includes(x2));
     state.belts.push(...own);
@@ -135,7 +150,7 @@ export function removeBuilding(state: GameState, id: number): ActionResult<numbe
   if (b.type === 'hq') return fail('err.cantRemoveHq');
   let refund = Math.floor(totalInvested(b) * BALANCE.refundRate);
   for (const belt of state.belts.filter((x) => x.from === id || x.to === id)) {
-    refund += Math.floor(belt.path.length * BALANCE.beltCostPerTile * BALANCE.refundRate);
+    refund += Math.floor(beltCost(state, belt.path) * BALANCE.refundRate);
   }
   state.belts = state.belts.filter((x) => x.from !== id && x.to !== id);
   state.buildings = state.buildings.filter((x) => x.id !== id);
@@ -169,16 +184,16 @@ export function totalInvested(b: Building): number {
 export function linkCarries(src: Building, dst: Building): ItemId[] {
   let produces: ItemId[];
   if (src.type === 'warehouse') produces = Object.keys(ITEMS) as ItemId[];
-  else if (src.type === 'miner') produces = []; // filled by caller via deposit
+  else if (isExtractor(src.type)) produces = []; // depends on the tile: see linkCarriesIn
   else if (src.recipe) produces = Object.keys(RECIPES[src.recipe].outputs) as ItemId[];
   else produces = [];
   return produces.filter((i) => acceptsType(dst, i));
 }
 
 export function linkCarriesIn(state: GameState, src: Building, dst: Building): ItemId[] {
-  if (src.type === 'miner') {
-    const dep = state.world.deposits[idx(state, src.x, src.y)];
-    return dep && acceptsType(dst, dep) ? [dep] : [];
+  if (isExtractor(src.type)) {
+    const item = extractedItem(state, src);
+    return item && acceptsType(dst, item) ? [item] : [];
   }
   return linkCarries(src, dst);
 }
@@ -203,8 +218,7 @@ export function planLink(state: GameState, fromId: number, toId: number): Action
   if (state.belts.filter((b) => b.to === to.id).length >= tdef.maxIn) return fail('err.maxIn');
   const path = findPath(state, from, to);
   if (!path) return fail('err.noPath');
-  const cost = Math.max(1, path.length) * BALANCE.beltCostPerTile;
-  return ok({ path, cost, carries: linkCarriesIn(state, from, to) });
+  return ok({ path, cost: beltCost(state, path), carries: linkCarriesIn(state, from, to) });
 }
 
 export function createLink(state: GameState, fromId: number, toId: number): ActionResult<LinkPlan> {
@@ -222,7 +236,7 @@ export function createLink(state: GameState, fromId: number, toId: number): Acti
 export function removeLink(state: GameState, beltId: number): ActionResult<number> {
   const belt = state.belts.find((b) => b.id === beltId);
   if (!belt) return fail('err.notFound');
-  const refund = Math.floor(Math.max(1, belt.path.length) * BALANCE.beltCostPerTile * BALANCE.refundRate);
+  const refund = Math.floor(beltCost(state, belt.path) * BALANCE.refundRate);
   state.belts = state.belts.filter((b) => b.id !== beltId);
   state.money += refund;
   return ok(refund);
@@ -242,7 +256,7 @@ export function upgradeBuilding(state: GameState, id: number): ActionResult<numb
 }
 
 export function isUpgradable(b: Building): boolean {
-  return ['miner', 'furnace', 'assembler', 'fabricator', 'warehouse', 'dock'].includes(b.type);
+  return isExtractor(b.type) || ['furnace', 'assembler', 'fabricator', 'refinery', 'warehouse', 'dock'].includes(b.type);
 }
 
 export function setRecipe(state: GameState, id: number, recipe: RecipeId): ActionResult<undefined> {

@@ -1,4 +1,4 @@
-import { GRADE_MULT, VEINS, type DepositId } from '../config/balance';
+import { EXTRACTORS, GRADE_MULT, VEINS, type DepositId } from '../config/balance';
 import { hasResearch } from './economy';
 import { metaUnlocked } from './quests';
 import { buildingAt, isUnlocked, rand } from './state';
@@ -55,7 +55,8 @@ function spawnSpot(s: GameState): [number, number, DepositId] | null {
   for (let y = 0; y < s.world.size; y++)
     for (let x = 0; x < s.world.size; x++) {
       const d = s.world.deposits[y * s.world.size + x];
-      if (!d || !isUnlocked(s, x, y) || buildingAt(s, x, y) || veinAt(s, x, y)) continue;
+      if (!d || !VEINS.amount[d] || !EXTRACTORS.miner?.deposits?.includes(d)) continue; // rich veins are ores only
+      if (!isUnlocked(s, x, y) || buildingAt(s, x, y) || veinAt(s, x, y)) continue;
       if (d === 'uranium_ore' && !hasResearch(s, 'r_nuclear')) continue;
       spots.push([x, y, d]);
     }
@@ -86,7 +87,7 @@ export function tickVeins(s: GameState, dt: number, events?: VeinEvent[]) {
   s.veinTimer = a + (b - a) * rand(s);
   if (!spot) return;
   const [x, y, type] = spot;
-  const total = VEINS.amount[type];
+  const total = VEINS.amount[type] ?? 1000;
   const v: Vein = { id: s.nextId++, x, y, type, amount: total, total, ttl: VEINS.unclaimedTtl, warned: false };
   s.veins.push(v);
   events?.push({ type: 'vein_spawn', vein: v });

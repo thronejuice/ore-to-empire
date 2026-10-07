@@ -1,7 +1,7 @@
-import { BALANCE } from '../config/balance';
 import { beltPoints, findPath, type PathCosts } from './pathfind';
 import { getBuilding, idx, invalidateOccupancy } from './state';
 import type { Belt, GameState } from './types';
+import { beltCost } from './zones';
 
 /**
  * "Tidy belts": rip up a set of belts and route them again together, looking for
@@ -26,7 +26,7 @@ export interface TidyPlan {
 }
 
 // heavier crossing/turn penalties than the one-at-a-time router, plus bundling
-const TIDY_COSTS: PathCosts = { cross: 8, turn: 0.35, deposit: 3, hug: 0.15 };
+const TIDY_COSTS: PathCosts = { cross: 8, turn: 0.35, deposit: 3, hug: 0.15, water: 6 };
 export const TIDY_ROUNDS = 4;
 const TIDY_SHUFFLES = 8;
 
@@ -149,21 +149,21 @@ export function planTidy(state: GameState, beltIds?: number[]): TidyPlan | null 
   if (weight(best.score) >= weight(before) - 1e-9) return null; // already as tidy as we can make it
 
   const routes: TidyPlan['routes'] = new Map();
-  let oldTiles = 0;
-  let newTiles = 0;
+  let oldCost = 0;
+  let newCost = 0;
   for (const belt of target) {
     const path = best.paths.get(belt.id)!;
     const { points, length } = beltPoints(getBuilding(state, belt.from)!, getBuilding(state, belt.to)!, path);
     routes.set(belt.id, { path, points, length });
-    oldTiles += Math.max(1, belt.path.length);
-    newTiles += Math.max(1, path.length);
+    oldCost += beltCost(state, belt.path);
+    newCost += beltCost(state, path);
   }
   return {
     ids,
     routes,
     before,
     after: best.score,
-    cost: Math.max(0, newTiles - oldTiles) * BALANCE.beltCostPerTile,
+    cost: Math.max(0, newCost - oldCost),
     sig: layoutSig(state),
   };
 }

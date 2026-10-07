@@ -1,8 +1,11 @@
-import { BUILDINGS, GRADE_MULT, VEINS, type ItemId } from '../config/balance';
+import { BUILDINGS, EXTRACTORS, GRADE_MULT, POWER, TERRAIN, VEINS, type DepositId, type ItemId } from '../config/balance';
+import { isBuildingUnlocked } from '../core/quests';
+import { isUnlocked } from '../core/state';
+import { extractorsFor, terrainAt, waterAt } from '../core/zones';
 import { veinAt, gradeAt } from '../core/veins';
 import { fmtClock, fmtMoney } from '../i18n';
 import { useGame, useT } from './hooks';
-import { ItemIcon } from './icons';
+import { BuildingIcon, ItemIcon } from './icons';
 
 export const GRADE_KEYS = ['ui.gradeLow', 'ui.gradeNormal', 'ui.gradeHigh'];
 
@@ -55,14 +58,18 @@ export function TileSheet() {
   const s = game.state;
   const [x, y] = tile;
   const dep = s.world.deposits[y * s.world.size + x] as ItemId | null;
-  if (!dep) return null;
-  const cost = BUILDINGS.miner.cost;
+  const water = waterAt(s, x, y);
+  const vent = terrainAt(s, x, y) === TERRAIN.vent;
+  if (!dep && !water && !vent) return null;
+  const builders = extractorsFor(s, x, y);
+  const title = dep ? t(`item.${dep}`) : water ? t(`terrain.${water}`) : t('terrain.vent');
+  const isOre = !!dep && !!EXTRACTORS.miner?.deposits?.includes(dep as DepositId);
   return (
     <aside className="sheet inspector" role="dialog">
       <div className="sheet-head">
-        <ItemIcon item={dep} size={32} />
+        {dep ? <ItemIcon item={dep} size={32} /> : builders[0] ? <BuildingIcon type={builders[0]} size={32} /> : null}
         <div className="insp-title">
-          <h2>{t(`item.${dep}`)}</h2>
+          <h2>{title}</h2>
           {veinAt(s, x, y) && <span className="status warn">✦ {t('ui.richVein')}</span>}
         </div>
         <button className="icon-btn" onClick={() => game.select(null)} aria-label={t('ui.close')}>
@@ -70,14 +77,47 @@ export function TileSheet() {
         </button>
       </div>
       <div className="sheet-body">
-        <OreInfo x={x} y={y} />
-        <p className="small dim">{t('ui.gradeHint')}</p>
+        {dep && <OreInfo x={x} y={y} />}
+        {isOre && <p className="small dim">{t('ui.gradeHint')}</p>}
+        {water && (
+          <p className="small dim">
+            {t('ui.waterHint', {
+              items: builders
+                .map((b) => EXTRACTORS[b]?.water?.[water])
+                .filter((i): i is ItemId => !!i)
+                .map((i) => t(`item.${i}`))
+                .join(', '),
+            })}
+          </p>
+        )}
+        {vent && <p className="small dim">{t('ui.ventHint', { mw: POWER.geothermal })}</p>}
       </div>
-      <div className="sheet-actions">
-        <button className="btn primary" disabled={s.money < cost} onClick={() => game.buildMinerAtTile()}>
-          {t('ui.buildDrillHere')} <span className="mono">{fmtMoney(cost)}</span>
-        </button>
-      </div>
+      {builders.length > 0 && (
+        <div className="sheet-actions">
+          {builders.map((type) => {
+            const unlocked = isBuildingUnlocked(s, type);
+            const need = BUILDINGS[type].research;
+            const cost = BUILDINGS[type].cost;
+            return (
+              <button
+                key={type}
+                className="btn primary"
+                disabled={!unlocked || s.money < cost || !isUnlocked(s, x, y)}
+                title={!unlocked && need ? t('ui.researchLocked', { name: t(`r.${need}.t`) }) : ''}
+                onClick={() => game.buildAtTile(type)}
+              >
+                {unlocked ? (
+                  <>
+                    {t('ui.buildHere', { name: t(`b.${type}`) })} <span className="mono">{fmtMoney(cost)}</span>
+                  </>
+                ) : (
+                  <>🔒 {t(`b.${type}`)}</>
+                )}
+              </button>
+            );
+          })}
+        </div>
+      )}
     </aside>
   );
 }

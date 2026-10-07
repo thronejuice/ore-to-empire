@@ -5,6 +5,10 @@ import { tick } from '../src/core/sim';
 import { newGame } from '../src/core/state';
 import type { GameState } from '../src/core/types';
 import { applyTidy, planTidy, scoreLayout } from '../src/core/tidy';
+import { legacyOffset } from '../src/core/worldgen';
+
+const O = legacyOffset(); // the original map sits in the middle of the big one
+
 
 const run = (s: GameState, seconds: number) => {
   for (let t = 0; t < seconds; t += BALANCE.tickSeconds) tick(s, BALANCE.tickSeconds);
@@ -19,8 +23,8 @@ function messy() {
   s.money = 1e6;
   s.world.deposits = s.world.deposits.map(() => null); // clear ore so placement is free
   s.world.grade = s.world.grade.map(() => 0);
-  const top = [10, 12, 14, 16].map((x) => placeBuilding(s, 'warehouse', x, 9));
-  const bottom = [10, 12, 14, 16].map((x) => placeBuilding(s, 'warehouse', x, 21));
+  const top = [10, 12, 14, 16].map((x) => placeBuilding(s, 'warehouse', O + x, O + 9));
+  const bottom = [10, 12, 14, 16].map((x) => placeBuilding(s, 'warehouse', O + x, O + 21));
   const ids = (arr: typeof top) => arr.map((r) => (r.ok ? r.value.id : 0));
   const t = ids(top);
   const b = ids(bottom);
@@ -64,7 +68,7 @@ describe('tidy belts', () => {
     const s = messy();
     const plan = planTidy(s)!;
     applyTidy(s, plan);
-    const got = () => s.buildings.filter((b) => b.y === 21).reduce((a, b) => a + (b.input.iron_bar ?? 0), 0);
+    const got = () => s.buildings.filter((b) => b.y === O + 21).reduce((a, b) => a + (b.input.iron_bar ?? 0), 0);
     const g0 = got();
     run(s, 20);
     expect(got()).toBeGreaterThan(g0 + 10);

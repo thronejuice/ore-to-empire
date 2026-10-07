@@ -12,7 +12,7 @@ import { RESEARCH, type ResearchId } from '../config/balance';
  * so nothing has to hook into every system.
  */
 
-const SELL_TARGET: Record<number, number> = { 1: 300, 2: 150, 3: 80, 4: 20, 5: 5 };
+const SELL_TARGET: Record<number, number> = { 1: 300, 2: 150, 3: 80, 4: 20, 5: 5, 6: 3, 7: 1 };
 
 function statFor(s: GameState, m: Pick<DailyMission, 'kind' | 'item'>): number {
   switch (m.kind) {

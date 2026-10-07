@@ -1,5 +1,6 @@
 import {
   BALANCE,
+  EXTRACTORS,
   ITEMS,
   POWER,
   RECIPES,
@@ -19,6 +20,7 @@ import { tickResearch } from './research';
 import { invTotal } from './state';
 import { mineFromVein, tickVeins, tileMult, type VeinEvent } from './veins';
 import type { Belt, Building, Contract, GameState, Inventory } from './types';
+import { extractedItem } from './zones';
 
 export type SimEvent =
   | { type: 'sold'; buildingId: number; item: ItemId; amount: number }
@@ -38,12 +40,18 @@ const take = (inv: Inventory, item: ItemId, n: number) => {
   else inv[item] = v;
 };
 
-const FUEL: Partial<Record<BuildingType, { item: ItemId; burn: number; buffer: number; mw: number }>> = {
-  coal_plant: { item: 'coal', burn: POWER.coalBurnTime, buffer: POWER.coalBuffer, mw: POWER.coalPlant },
-  nuclear_plant: { item: 'fuel_rod', burn: POWER.nuclearBurnTime, buffer: POWER.nuclearBuffer, mw: POWER.nuclear },
+const FUEL: Partial<Record<BuildingType, { items: ItemId[]; burn: number; buffer: number; mw: number }>> = {
+  coal_plant: { items: ['coal', 'charcoal'], burn: POWER.coalBurnTime, buffer: POWER.coalBuffer, mw: POWER.coalPlant },
+  nuclear_plant: { items: ['fuel_rod'], burn: POWER.nuclearBurnTime, buffer: POWER.nuclearBuffer, mw: POWER.nuclear },
 };
 
-const isCrafter = (t: BuildingType) => t === 'furnace' || t === 'assembler' || t === 'fabricator';
+/** first fuel in stock, or null */
+function nextFuel(b: Building, items: ItemId[]): ItemId | null {
+  for (const i of items) if ((b.input[i] ?? 0) > 0) return i;
+  return null;
+}
+
+export const isCrafter = (t: BuildingType) => t === 'furnace' || t === 'assembler' || t === 'fabricator' || t === 'refinery';
 const isStorage = (t: BuildingType) => t === 'warehouse' || t === 'dock';
 const isSeller = (t: BuildingType) => t === 'hq' || t === 'depot';
 
@@ -51,7 +59,7 @@ const isSeller = (t: BuildingType) => t === 'hq' || t === 'depot';
 export function acceptsType(b: Building, item: ItemId): boolean {
   if (isSeller(b.type) || isStorage(b.type)) return ITEMS[item].price > 0;
   const fuel = FUEL[b.type];
-  if (fuel) return item === fuel.item;
+  if (fuel) return fuel.items.includes(item);
   if (isCrafter(b.type)) return !!b.recipe && (RECIPES[b.recipe].inputs[item] ?? 0) > 0;
   return false;
 }
@@ -62,7 +70,7 @@ export function canAccept(b: Building, item: ItemId): boolean {
   if (isSeller(b.type)) return true;
   if (isStorage(b.type)) return invTotal(b.input) < storageCapacity(b.type, b.level);
   const fuel = FUEL[b.type];
-  if (fuel) return (b.input[item] ?? 0) < fuel.buffer;
+  if (fuel) return invTotal(b.input) < fuel.buffer;
   return (b.input[item] ?? 0) < Math.max(BALANCE.inputBufferPerItem, (RECIPES[b.recipe!].inputs[item] ?? 0) * 3);
 }
 
@@ -94,6 +102,7 @@ export function updatePower(state: GameState, dt: number) {
     const fuel = FUEL[b.type];
     if (fuel && b.burn > 0) gen += fuel.mw;
     if (b.type === 'solar') gen += POWER.solar;
+    if (b.type === 'geothermal') gen += POWER.geothermal;
     if (b.type === 'battery') batteries.push(b);
     if (wantsPower(b)) demand += levelPower(b.type, b.level) * pm;
   }
@@ -133,13 +142,14 @@ export function updatePower(state: GameState, dt: number) {
 function updateBuilding(state: GameState, b: Building, dt: number, speed: number, events?: SimEvent[]) {
   const sat = state.power.satisfaction;
 
-  if (b.type === 'miner') {
-    const dep = state.world.deposits[b.y * state.world.size + b.x];
-    if (!dep) {
+  const ex = EXTRACTORS[b.type];
+  if (ex) {
+    const item = extractedItem(state, b);
+    if (!item) {
       b.status = 'idle';
       return;
     }
-    if (dep === 'uranium_ore' && !hasResearch(state, 'r_nuclear')) {
+    if (item === 'uranium_ore' && !hasResearch(state, 'r_nuclear')) {
       b.status = 'locked';
       return;
     }
@@ -148,7 +158,8 @@ function updateBuilding(state: GameState, b: Building, dt: number, speed: number
       return;
     }
     b.status = 'working';
-    b.progress += (dt * sat * speed * levelSpeed(b.level) * tileMult(state, b.x, b.y)) / BALANCE.minerTime;
+    const tile = ex.deposits ? tileMult(state, b.x, b.y) : 1; // water has no grade
+    b.progress += (dt * sat * speed * levelSpeed(b.level) * tile) / ex.time;
     while (b.progress >= 1) {
       if (invTotal(b.output) >= BALANCE.outputBufferTotal) {
         b.progress = 1;
@@ -156,9 +167,9 @@ function updateBuilding(state: GameState, b: Building, dt: number, speed: number
         break;
       }
       b.progress -= 1;
-      add(b.output, dep, 1);
-      add(state.stats.produced, dep, 1);
-      mineFromVein(state, b.x, b.y, events as VeinEvent[] | undefined);
+      add(b.output, item, 1);
+      add(state.stats.produced, item, 1);
+      if (ex.deposits) mineFromVein(state, b.x, b.y, events as VeinEvent[] | undefined);
     }
     return;
   }
@@ -213,12 +224,13 @@ function updateBuilding(state: GameState, b: Building, dt: number, speed: number
     let t = dt;
     while (t > 0) {
       if (b.burn <= 0) {
-        if ((b.input[fuel.item] ?? 0) <= 0) {
+        const f = nextFuel(b, fuel.items);
+        if (!f) {
           b.burn = 0;
           b.status = 'no_fuel';
           return;
         }
-        take(b.input, fuel.item, 1);
+        take(b.input, f, 1);
         b.burn += fuel.burn;
       }
       const used = Math.min(t, b.burn);
@@ -226,14 +238,15 @@ function updateBuilding(state: GameState, b: Building, dt: number, speed: number
       t -= used;
     }
     b.status = 'working';
-    if (b.burn <= 0 && (b.input[fuel.item] ?? 0) > 0) {
-      take(b.input, fuel.item, 1);
+    const f = b.burn <= 0 ? nextFuel(b, fuel.items) : null;
+    if (f) {
+      take(b.input, f, 1);
       b.burn += fuel.burn;
     }
     return;
   }
 
-  if (b.type === 'solar') {
+  if (b.type === 'solar' || b.type === 'geothermal') {
     b.status = 'working';
     return;
   }

@@ -4,6 +4,9 @@ import { createLink, freeMoveLeft, moveBuilding, moveFee, placeBuilding, totalIn
 import { tick } from '../src/core/sim';
 import { buildingAt, idx, newGame } from '../src/core/state';
 import type { GameState } from '../src/core/types';
+import { legacyOffset } from '../src/core/worldgen';
+
+const O = legacyOffset(); // the original map sits in the middle of the big one
 
 const run = (s: GameState, seconds: number) => {
   for (let t = 0; t < seconds; t += BALANCE.tickSeconds) tick(s, BALANCE.tickSeconds);
@@ -11,8 +14,8 @@ const run = (s: GameState, seconds: number) => {
 const hq = (s: GameState) => s.buildings.find((b) => b.type === 'hq')!;
 
 function deposit(s: GameState, type: DepositId, skip = 0): [number, number] {
-  for (let y = 8; y < 24; y++)
-    for (let x = 8; x < 24; x++) if (s.world.deposits[idx(s, x, y)] === type && skip-- <= 0) return [x, y];
+  for (let y = O + 8; y < O + 24; y++)
+    for (let x = O + 8; x < O + 24; x++) if (s.world.deposits[idx(s, x, y)] === type && skip-- <= 0) return [x, y];
   throw new Error('no ' + type);
 }
 
@@ -22,7 +25,7 @@ function emptyTile(s: GameState, near: [number, number]): [number, number] {
       for (let dx = -r; dx <= r; dx++) {
         const x = near[0] + dx;
         const y = near[1] + dy;
-        if (x < 8 || y < 8 || x > 23 || y > 23) continue;
+        if (x < O + 8 || y < O + 8 || x > O + 23 || y > O + 23) continue;
         if (s.world.deposits[idx(s, x, y)] || buildingAt(s, x, y)) continue;
         if (s.belts.some((b) => b.path.some(([a, c]) => a === x && c === y))) continue;
         return [x, y];
@@ -109,7 +112,7 @@ describe('moving buildings', () => {
   it('rolls back when a belt cannot reach the new spot', () => {
     const { s, furnace } = chain();
     // wall the destination in with warehouses so no belt can get there
-    const [nx, ny] = [20, 20];
+    const [nx, ny] = [O + 20, O + 20];
     s.money = 1e6;
     for (const [dx, dy] of [
       [1, 0],
@@ -130,7 +133,7 @@ describe('moving buildings', () => {
   it('the HQ can move too', () => {
     const { s } = chain();
     const h = hq(s);
-    expect(moveBuilding(s, h.id, 9, 20).ok || moveBuilding(s, h.id, 20, 9).ok).toBe(true);
+    expect(moveBuilding(s, h.id, O + 9, O + 20).ok || moveBuilding(s, h.id, O + 20, O + 9).ok).toBe(true);
     run(s, 40);
     expect(s.stats.sold.iron_bar ?? 0).toBeGreaterThan(0);
   });

@@ -1,4 +1,6 @@
 import { RESEARCH, type ResearchId } from '../config/balance';
+import { PERK_VALUES } from '../config/meta';
+import { perk } from './economy';
 import type { GameState } from './types';
 
 export type ResearchState = 'done' | 'active' | 'available' | 'locked';
@@ -25,7 +27,7 @@ export function startResearch(s: GameState, id: ResearchId): string | null {
 export function tickResearch(s: GameState, dt: number): ResearchId | null {
   const a = s.research.active;
   if (!a) return null;
-  a.remaining -= dt;
+  a.remaining -= dt * (1 + perk(s, 'p_research_speed') * PERK_VALUES.researchSpeedPerLevel);
   if (a.remaining > 0) return null;
   s.research.done.push(a.id);
   s.research.active = null;

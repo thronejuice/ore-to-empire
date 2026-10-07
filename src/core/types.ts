@@ -1,4 +1,4 @@
-import type { BuildingType, CityId, DepositId, ItemId, RecipeId, ResearchId, VehicleType } from '../config/balance';
+import type { BuildingType, CityId, DepositId, ItemId, RecipeId, ResearchId, VehicleType, ZoneId } from '../config/balance';
 
 export type Inventory = Partial<Record<ItemId, number>>;
 
@@ -131,6 +131,8 @@ export interface GameState {
     deposits: (DepositId | null)[];
     /** ore grade per tile: 0 low, 1 normal, 2 high (see GRADE_MULT) */
     grade: number[];
+    /** per tile: 0 land, 1 river, 2 sea, 3 volcanic vent (see TERRAIN) */
+    terrain: number[];
     plots: boolean[];
   };
   /** temporary rich veins (only active while the game is open) */
@@ -159,7 +161,10 @@ export interface GameState {
   vehicles: Vehicle[];
   rng: number;
 
-  // ---- Phase 3
+  /** zone licences bought (the home zone needs none) */
+  licences: ZoneId[];
+
+  // ---- Phase 3 (prestige.count only matters for saves from before v1.2)
   prestige: { count: number; shares: number; perks: Partial<Record<string, number>>; lifetimeEarned: number };
   contracts: { offers: Contract[]; active: Contract[]; refreshAt: number };
   daily: { day: string; missions: DailyMission[]; bonusClaimed: boolean };

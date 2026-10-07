@@ -1,21 +1,23 @@
 import { describe, expect, it } from 'vitest';
 import { BALANCE, POWER, type DepositId, type ResearchId } from '../src/config/balance';
-import { PRESTIGE } from '../src/config/meta';
 import { createLink, placeBuilding, setRecipe } from '../src/core/actions';
 import { acceptContract, tickContracts } from '../src/core/contracts';
 import { claimBonus, claimMission, ensureDaily, missionDone } from '../src/core/daily';
 import { buyVehicle, setRoute } from '../src/core/fleet';
 import { applyGemItem } from '../src/core/gems';
-import { buyPlot, nextPlotPrice, plotForSale } from '../src/core/land';
+import { buyPlot, plotForSale, plotPrice } from '../src/core/land';
 import { price, sell } from '../src/core/market';
 import { applyOffline } from '../src/core/offline';
-import { buyPerk, canPrestige, prestige, sharesFor } from '../src/core/prestige';
 import { isBuildingUnlocked } from '../src/core/quests';
 import { startResearch } from '../src/core/research';
 import { deserialize } from '../src/core/save';
 import { tick } from '../src/core/sim';
 import { idx, newGame } from '../src/core/state';
 import type { GameState } from '../src/core/types';
+import { legacyOffset } from '../src/core/worldgen';
+import { legacySave } from './legacy';
+
+const O = legacyOffset(); // the original map sits in the middle of the big one
 
 const run = (s: GameState, seconds: number) => {
   for (let t = 0; t < seconds; t += BALANCE.tickSeconds) tick(s, BALANCE.tickSeconds);
@@ -27,7 +29,7 @@ function deposit(s: GameState, type: DepositId, owned = true, skip = 0): [number
   for (let y = 0; y < s.world.size; y++)
     for (let x = 0; x < s.world.size; x++) {
       if (s.world.deposits[idx(s, x, y)] !== type) continue;
-      const p = s.world.plots[Math.floor(y / 8) * 4 + Math.floor(x / 8)];
+      const p = s.world.plots[Math.floor(y / 8) * (s.world.size / 8) + Math.floor(x / 8)];
       if (owned && !p) continue;
       if (skip-- > 0) continue;
       return [x, y];
@@ -48,7 +50,7 @@ describe('research', () => {
     expect(s.research.done).toContain('r_trucks');
     expect(isBuildingUnlocked(s, 'dock')).toBe(true);
 
-    const f = placeBuilding(s, 'furnace', 12, 12);
+    const f = placeBuilding(s, 'furnace', O + 12, O + 12);
     if (!f.ok) throw new Error();
     expect(setRecipe(s, f.value.id, 'steel').ok).toBe(false);
     research(s, 'r_steel');
@@ -78,7 +80,7 @@ describe('logistics', () => {
     const s = newGame(4);
     s.money = 100000;
     research(s, 'r_trucks');
-    const d = placeBuilding(s, 'dock', 12, 12);
+    const d = placeBuilding(s, 'dock', O + 12, O + 12);
     if (!d.ok) throw new Error(d.reason);
     d.value.input = { iron_bar: 50 };
     expect(buyVehicle(s, 'truck')).toBeNull();
@@ -97,7 +99,7 @@ describe('logistics', () => {
     research(s, 'r_trucks');
     const [x, y] = deposit(s, 'iron_ore');
     const m = placeBuilding(s, 'miner', x, y);
-    const d = placeBuilding(s, 'dock', 15, 10);
+    const d = placeBuilding(s, 'dock', O + 15, O + 10);
     if (!m.ok || !d.ok) throw new Error();
     expect(createLink(s, m.value.id, d.value.id).ok).toBe(true);
     run(s, 30);
@@ -109,12 +111,12 @@ describe('land', () => {
   it('only plots next to owned land are for sale, with rising prices', () => {
     const s = newGame(1);
     s.money = 1e6;
-    expect(plotForSale(s, 0, 0)).toBe(false); // corner, not adjacent
-    expect(plotForSale(s, 0, 1)).toBe(true);
-    const p1 = nextPlotPrice(s);
-    expect(buyPlot(s, 0, 1)).toBeNull();
-    expect(nextPlotPrice(s)).toBeGreaterThan(p1);
-    expect(plotForSale(s, 0, 0)).toBe(true);
+    expect(plotForSale(s, 2, 2)).toBe(false); // corner of the home block, not adjacent
+    expect(plotForSale(s, 2, 3)).toBe(true);
+    const p1 = plotPrice(s, 2, 3);
+    expect(buyPlot(s, 2, 3)).toBeNull();
+    expect(plotPrice(s, 2, 2)).toBeGreaterThan(p1);
+    expect(plotForSale(s, 2, 2)).toBe(true);
   });
 
   it('sand needs bought land; uranium needs the nuclear research', () => {
@@ -122,7 +124,7 @@ describe('land', () => {
     s.money = 1e7;
     expect(() => deposit(s, 'sand', true)).toThrow();
     const [ux, uy] = deposit(s, 'uranium_ore', false);
-    s.world.plots[Math.floor(uy / 8) * 4 + Math.floor(ux / 8)] = true;
+    s.world.plots[Math.floor(uy / 8) * (s.world.size / 8) + Math.floor(ux / 8)] = true;
     expect(placeBuilding(s, 'miner', ux, uy).ok).toBe(false);
     research(s, 'r_nuclear');
     expect(placeBuilding(s, 'miner', ux, uy).ok).toBe(true);
@@ -134,8 +136,8 @@ describe('power', () => {
     const s = newGame(3);
     s.money = 1e6;
     research(s, 'r_glass', 'r_solar', 'r_fabricator', 'r_gears', 'r_steel', 'r_battery');
-    placeBuilding(s, 'solar', 12, 12);
-    const bat = placeBuilding(s, 'battery', 13, 12);
+    placeBuilding(s, 'solar', O + 12, O + 12);
+    const bat = placeBuilding(s, 'battery', O + 13, O + 12);
     if (!bat.ok) throw new Error(bat.reason);
     run(s, 20); // no consumers: 8.5 MW surplus charges the battery
     expect(bat.value.charge ?? 0).toBeGreaterThan(100);
@@ -146,7 +148,7 @@ describe('power', () => {
     const s = newGame(3);
     s.money = 1e6;
     research(s, 'r_nuclear');
-    const n = placeBuilding(s, 'nuclear_plant', 9, 9);
+    const n = placeBuilding(s, 'nuclear_plant', O + 9, O + 9);
     if (!n.ok) throw new Error(n.reason);
     n.value.input = { fuel_rod: 2 };
     run(s, 1);
@@ -159,12 +161,12 @@ describe('fabricator', () => {
     const s = newGame(3);
     s.money = 1e6;
     research(s, 'r_steel', 'r_gears', 'r_glass', 'r_fabricator');
-    const fab = placeBuilding(s, 'fabricator', 9, 9);
+    const fab = placeBuilding(s, 'fabricator', O + 9, O + 9);
     if (!fab.ok) throw new Error(fab.reason);
     expect(fab.value.recipe).toBe('motor');
     fab.value.input = { machine_part: 4, gear: 2, wire: 6 };
     research(s, 'r_solar');
-    for (let i = 0; i < 3; i++) placeBuilding(s, 'solar', 12 + i, 12); // 6 MW HQ + 7.5 MW ≥ 12 MW
+    for (let i = 0; i < 3; i++) placeBuilding(s, 'solar', O + 12 + i, O + 12); // 6 MW HQ + 7.5 MW ≥ 12 MW
     run(s, 13);
     expect(fab.value.output.motor ?? 0).toBe(2);
   });
@@ -177,7 +179,7 @@ describe('offline v2', () => {
     research(s, 'r_trucks');
     const [x, y] = deposit(s, 'iron_ore');
     const [x2, y2] = deposit(s, 'iron_ore', true, 1);
-    const d = placeBuilding(s, 'dock', 15, 10);
+    const d = placeBuilding(s, 'dock', O + 15, O + 10);
     for (const [mx, my] of [
       [x, y],
       [x2, y2],
@@ -200,11 +202,11 @@ describe('offline v2', () => {
 
 describe('migration', () => {
   it('loads a Phase 1 save', () => {
-    const old = newGame(9) as unknown as Record<string, unknown>;
-    old.version = 1;
+    const old = legacySave(newGame(9), 1);
     for (const k of ['research', 'markets', 'vehicles', 'prestige', 'contracts', 'daily', 'gems']) delete old[k];
     const s = deserialize(JSON.stringify(old))!;
-    expect(s.version).toBe(3);
+    expect(s.version).toBe(4);
+    expect(s.world.size).toBe(BALANCE.worldSize);
     expect(s.world.grade.length).toBe(s.world.size * s.world.size);
     expect(s.veins).toEqual([]);
     expect(s.research.done).toEqual([]);
@@ -213,27 +215,7 @@ describe('migration', () => {
   });
 });
 
-describe('prestige', () => {
-  it('needs $1M earned, converts to shares, keeps perks and gems', () => {
-    const s = newGame(1);
-    s.stats.totalEarned = PRESTIGE.minRunEarned - 1;
-    expect(canPrestige(s)).toBe(false);
-    s.stats.totalEarned = 4_000_000;
-    expect(canPrestige(s)).toBe(true);
-    s.gems = 42;
-    s.research.done.push('r_trucks', 'r_gears');
-    s.prestige.shares = 10;
-    expect(buyPerk(s, 'p_research')).toBeNull();
-    expect(buyPerk(s, 'p_cash')).toBeNull();
-    const next = prestige(s, 5);
-    expect(next.prestige.shares).toBe(10 - 6 - 1 + sharesFor(4_000_000));
-    expect(next.prestige.count).toBe(1);
-    expect(next.gems).toBe(42);
-    expect(next.money).toBe(BALANCE.startMoney + 5000);
-    expect(next.research.done).toEqual(['r_trucks']); // tier A only
-    expect(next.buildings.length).toBe(1);
-  });
-
+describe('investor shares', () => {
   it('shares raise sale prices', () => {
     const s = newGame(1);
     const p = price(s, 'local', 'iron_bar');

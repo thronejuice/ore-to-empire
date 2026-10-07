@@ -7,6 +7,10 @@ import { tick, type SimEvent } from '../src/core/sim';
 import { idx, newGame } from '../src/core/state';
 import type { GameState } from '../src/core/types';
 import { gradeAt, tileMult, veinAt } from '../src/core/veins';
+import { legacyOffset } from '../src/core/worldgen';
+
+const O = legacyOffset(); // the original map sits in the middle of the big one
+
 
 const run = (s: GameState, seconds: number, events?: SimEvent[]) => {
   for (let t = 0; t < seconds; t += BALANCE.tickSeconds) tick(s, BALANCE.tickSeconds, events);
@@ -15,8 +19,8 @@ const hqId = (s: GameState) => s.buildings.find((b) => b.type === 'hq')!.id;
 
 function tiles(s: GameState, type: DepositId, grade?: number): [number, number][] {
   const out: [number, number][] = [];
-  for (let y = 8; y < 24; y++)
-    for (let x = 8; x < 24; x++) if (s.world.deposits[idx(s, x, y)] === type && (grade === undefined || gradeAt(s, x, y) === grade)) out.push([x, y]);
+  for (let y = O + 8; y < O + 24; y++)
+    for (let x = O + 8; x < O + 24; x++) if (s.world.deposits[idx(s, x, y)] === type && (grade === undefined || gradeAt(s, x, y) === grade)) out.push([x, y]);
   return out;
 }
 

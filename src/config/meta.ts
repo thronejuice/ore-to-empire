@@ -1,22 +1,18 @@
 /**
- * Meta-progression numbers: prestige, contracts, daily missions, gem shop.
+ * Meta-progression numbers: investor perks, contracts, daily missions, gem shop.
  * Like balance.ts, everything tunable lives here.
  */
 
 // =============================================================================
-// Prestige — "Sell the company"
+// Investors — shares come from zone licences (v1.2; selling the company is gone)
 // =============================================================================
 
 export const PRESTIGE = {
-  /** minimum money earned this run before the company can be sold */
-  minRunEarned: 1_000_000,
-  /** shares = floor(sqrt(runEarned / divisor)) */
-  divisor: 40_000,
   /** each unspent share adds this much to all sale prices */
   incomePerShare: 0.02,
 };
 
-export type PerkId = 'p_cash' | 'p_speed' | 'p_trade' | 'p_offline' | 'p_research' | 'p_land';
+export type PerkId = 'p_speed' | 'p_trade' | 'p_offline' | 'p_land_discount' | 'p_research_speed' | 'p_belt_discount';
 
 export interface PerkDef {
   id: PerkId;
@@ -26,21 +22,30 @@ export interface PerkDef {
 }
 
 export const PERKS: Record<PerkId, PerkDef> = {
-  p_cash: { id: 'p_cash', max: 10, cost: () => 1 }, // +$5,000 starting money per level
   p_speed: { id: 'p_speed', max: 10, cost: (l) => 2 + l }, // +5 % machine speed per level
   p_trade: { id: 'p_trade', max: 10, cost: (l) => 2 + l }, // +5 % sale prices per level
   p_offline: { id: 'p_offline', max: 4, cost: (l) => 3 + l * 2 }, // +1 h offline cap per level
-  p_research: { id: 'p_research', max: 2, cost: (l) => (l === 0 ? 6 : 18) }, // keep tier A (then A+B) research
-  p_land: { id: 'p_land', max: 2, cost: (l) => (l === 0 ? 8 : 20) }, // start with extra land plots
+  p_land_discount: { id: 'p_land_discount', max: 5, cost: (l) => 2 + l }, // −8 % land prices per level
+  p_research_speed: { id: 'p_research_speed', max: 5, cost: (l) => 2 + l }, // +10 % research speed per level
+  p_belt_discount: { id: 'p_belt_discount', max: 5, cost: (l) => 1 + l }, // −10 % belt & bridge prices per level
 };
 
-export const PERK_ORDER: PerkId[] = ['p_cash', 'p_speed', 'p_trade', 'p_offline', 'p_research', 'p_land'];
+export const PERK_ORDER: PerkId[] = ['p_speed', 'p_trade', 'p_offline', 'p_land_discount', 'p_research_speed', 'p_belt_discount'];
 
 export const PERK_VALUES = {
-  cashPerLevel: 5000,
   speedPerLevel: 0.05,
   tradePerLevel: 0.05,
   offlineHoursPerLevel: 1,
+  landDiscountPerLevel: 0.08,
+  researchSpeedPerLevel: 0.1,
+  beltDiscountPerLevel: 0.1,
+};
+
+/** shares refunded for each level of a perk that no longer exists (it only worked when selling the company) */
+export const RETIRED_PERK_COSTS: Record<string, number[]> = {
+  p_cash: [1, 1, 1, 1, 1, 1, 1, 1, 1, 1],
+  p_research: [6, 18],
+  p_land: [8, 20],
 };
 
 // =============================================================================

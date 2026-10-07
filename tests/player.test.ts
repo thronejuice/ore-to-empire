@@ -1,7 +1,8 @@
 import { describe, expect, it } from 'vitest';
 import { maskCode, nameProblem, normaliseCode } from '../src/core/player';
 import { newGame } from '../src/core/state';
-import { prestige } from '../src/core/prestige';
+import { deserialize } from '../src/core/save';
+import { legacySave } from './legacy';
 
 describe('player names', () => {
   it('accepts Thai, English, digits and _', () => {
@@ -32,9 +33,9 @@ describe('recovery codes', () => {
 });
 
 describe('player name in the save', () => {
-  it('survives selling the company', () => {
+  it('survives the move to the big map', () => {
     const s = newGame(1);
     s.player = { name: 'SteelKing' };
-    expect(prestige(s, 2).player).toEqual({ name: 'SteelKing' });
+    expect(deserialize(JSON.stringify(legacySave(s)))!.player).toEqual({ name: 'SteelKing' });
   });
 });

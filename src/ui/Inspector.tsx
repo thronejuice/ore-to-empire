@@ -2,6 +2,7 @@ import { useEffect, useState } from 'react';
 import {
   BALANCE,
   BUILDINGS,
+  EXTRACTORS,
   POWER,
   RECIPES,
   allRecipesFor,
@@ -13,6 +14,8 @@ import {
 } from '../config/balance';
 import { globalSpeed, powerMult, recipeUnlocked } from '../core/economy';
 import { tileMult } from '../core/veins';
+import { isCrafter } from '../core/sim';
+import { extractedItem } from '../core/zones';
 import { OreInfo } from './TileSheet';
 import { freeMoveLeft, isUpgradable, linkCarriesIn, moveFee, totalInvested } from '../core/actions';
 import { getBuilding, invTotal } from '../core/state';
@@ -46,26 +49,25 @@ export function Inspector() {
   const statusClass = b.status === 'working' ? 'good' : b.status === 'output_full' || b.status === 'no_fuel' ? 'bad' : 'warn';
 
   let body: React.ReactNode = null;
-  if (b.type === 'miner') {
-    const dep = s.world.deposits[b.y * s.world.size + b.x] as ItemId | null;
-    body = (
-      <div className="kv">
-        <span>{t('ui.extracts')}</span>
-        <span>
-          {dep && <ItemIcon item={dep} />} {dep ? t(`item.${dep}`) : '-'} ·{' '}
-          <span className="mono">{fmtNum((60 / BALANCE.minerTime) * sm * tileMult(s, b.x, b.y))}/min</span>
-        </span>
-        <span>{t('ui.output')}</span>
-        <Inv inv={b.output} empty={t('ui.empty')} />
-      </div>
-    );
+  const ex = EXTRACTORS[b.type];
+  if (ex) {
+    const got = extractedItem(s, b);
+    const mult = ex.deposits ? tileMult(s, b.x, b.y) : 1;
     body = (
       <>
-        {body}
-        <OreInfo x={b.x} y={b.y} />
+        <div className="kv">
+          <span>{t('ui.extracts')}</span>
+          <span>
+            {got && <ItemIcon item={got} />} {got ? t(`item.${got}`) : '-'} ·{' '}
+            <span className="mono">{fmtNum((60 / ex.time) * sm * mult)}/min</span>
+          </span>
+          <span>{t('ui.output')}</span>
+          <Inv inv={b.output} empty={t('ui.empty')} />
+        </div>
+        {ex.deposits && <OreInfo x={b.x} y={b.y} />}
       </>
     );
-  } else if (b.type === 'furnace' || b.type === 'assembler' || b.type === 'fabricator') {
+  } else if (isCrafter(b.type)) {
     const r = b.recipe ? RECIPES[b.recipe] : null;
     body = (
       <>
@@ -185,11 +187,11 @@ export function Inspector() {
         <span className={`mono ${b.burn > 0 ? 'good' : 'bad'}`}>{b.burn > 0 ? `+${mw}` : '0'} MW</span>
       </div>
     );
-  } else if (b.type === 'solar') {
+  } else if (b.type === 'solar' || b.type === 'geothermal') {
     body = (
       <div className="kv">
         <span>{t('ui.generates')}</span>
-        <span className="mono good">+{POWER.solar} MW</span>
+        <span className="mono good">+{b.type === 'solar' ? POWER.solar : POWER.geothermal} MW</span>
       </div>
     );
   } else if (b.type === 'battery') {
@@ -240,7 +242,7 @@ export function Inspector() {
           <h2>
             {t(`b.${b.type}`)} {isUpgradable(b) && <span className="lv mono">{t('ui.level', { n: b.level })}</span>}
           </h2>
-          {b.type !== 'hq' && b.type !== 'depot' && b.type !== 'solar' && <span className={`status ${statusClass}`}>● {t(`status.${b.status}`)}</span>}
+          {b.type !== 'hq' && b.type !== 'depot' && b.type !== 'solar' && b.type !== 'geothermal' && <span className={`status ${statusClass}`}>● {t(`status.${b.status}`)}</span>}
         </div>
         <button className="icon-btn" onClick={() => game.select(null)} aria-label={t('ui.close')}>
           ✕

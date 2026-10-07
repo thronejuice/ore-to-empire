@@ -1,4 +1,4 @@
-import { BUILDINGS, type BuildingType, type ItemId } from '../config/balance';
+import { BUILDINGS, type BuildingType, type ItemId, type ZoneId } from '../config/balance';
 import { hasResearch, incomePerMinute } from './economy';
 import { getBuilding, invTotal } from './state';
 import type { GameState } from './types';
@@ -19,6 +19,7 @@ const count = (s: GameState, t: BuildingType) => s.buildings.filter((b) => b.typ
 const sold = (s: GameState, i: ItemId) => s.stats.sold[i] ?? 0;
 const linked = (s: GameState, from: BuildingType, to: BuildingType) =>
   s.belts.some((b) => getBuilding(s, b.from)?.type === from && getBuilding(s, b.to)?.type === to);
+const licensed = (s: GameState, z: ZoneId) => (s.licences ?? []).includes(z);
 const maxLevel = (s: GameState) => Math.max(1, ...s.buildings.filter((b) => b.type !== 'hq').map((b) => b.level));
 
 export const QUESTS: QuestDef[] = [
@@ -95,13 +96,13 @@ export const QUESTS: QuestDef[] = [
   { id: 'q_export', reward: 3000, highlight: 'nav-fleet', check: (s) => s.stats.trips >= 1 },
   { id: 'q_contract', reward: 3000, highlight: 'nav-contracts', check: (s) => s.stats.contracts >= 1 },
   { id: 'q_motor', reward: 8000, check: (s) => (s.stats.sold.motor ?? 0) >= 10, progress: (s) => [s.stats.sold.motor ?? 0, 10] },
-  {
-    id: 'q_million',
-    reward: 0,
-    highlight: 'nav-prestige',
-    check: (s) => s.prestige.count >= 1,
-    progress: (s) => [Math.min(1_000_000, Math.floor(s.stats.totalEarned)), 1_000_000],
-  },
+  // ---- v1.2: grow outward instead of selling the company
+  { id: 'q_lic_forest', reward: 5000, highlight: 'nav-prestige', check: (s) => licensed(s, 'forest') },
+  { id: 'q_lic_river', reward: 8000, highlight: 'nav-prestige', check: (s) => licensed(s, 'river') },
+  { id: 'q_lic_sea', reward: 20000, highlight: 'nav-prestige', check: (s) => licensed(s, 'sea') },
+  { id: 'q_lic_desert', reward: 40000, highlight: 'nav-prestige', check: (s) => licensed(s, 'desert') },
+  { id: 'q_lic_volcano', reward: 100000, highlight: 'nav-prestige', check: (s) => licensed(s, 'volcano') },
+  { id: 'q_rocket', reward: 0, check: (s) => sold(s, 'rocket') >= 1 },
 ];
 
 export function currentQuestIndex(s: GameState): number {

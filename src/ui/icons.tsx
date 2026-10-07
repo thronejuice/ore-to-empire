@@ -109,6 +109,120 @@ export function ItemIcon({ item, size = 16, label }: { item: ItemId; size?: numb
         </g>
       );
       break;
+    case 'fish':
+    case 'sea_fish':
+      shape = (
+        <g>
+          <ellipse cx="7" cy="8" rx="5.5" ry="3.3" fill={c} stroke={k} />
+          <polygon points="11.5,8 15,4.5 15,11.5" fill={c} stroke={k} />
+          <circle cx="4.2" cy="7.2" r=".9" fill={dark} />
+        </g>
+      );
+      break;
+    case 'wood':
+      shape = (
+        <g>
+          <rect x="1.5" y="5" width="13" height="6" rx="3" fill={c} stroke={k} />
+          <circle cx="12" cy="8" r="2" fill="#d9b07a" />
+        </g>
+      );
+      break;
+    case 'flower':
+      shape = (
+        <g fill={c}>
+          <circle cx="8" cy="4.5" r="2.6" />
+          <circle cx="11.4" cy="7" r="2.6" />
+          <circle cx="10.1" cy="11" r="2.6" />
+          <circle cx="5.9" cy="11" r="2.6" />
+          <circle cx="4.6" cy="7" r="2.6" />
+          <circle cx="8" cy="8" r="2" fill="#ffc94a" />
+        </g>
+      );
+      break;
+    case 'gold_bar':
+      shape = (
+        <g>
+          <polygon points="1.5,12 3.5,5 12.5,5 14.5,12" fill={c} stroke={k} />
+          <line x1="4.5" y1="6.6" x2="11.5" y2="6.6" stroke="#fff" strokeOpacity=".6" />
+        </g>
+      );
+      break;
+    case 'brick':
+      shape = (
+        <g>
+          <rect x="1.5" y="4.5" width="13" height="7" rx="1" fill={c} stroke={k} />
+          <line x1="8" y1="4.5" x2="8" y2="11.5" stroke={dark} strokeOpacity=".4" />
+        </g>
+      );
+      break;
+    case 'plastic':
+      shape = (
+        <g fill={c} stroke={k}>
+          <circle cx="5.5" cy="6.5" r="3.3" />
+          <circle cx="10.5" cy="8" r="3.3" />
+          <circle cx="7.5" cy="11.5" r="3" />
+        </g>
+      );
+      break;
+    case 'lens':
+      shape = (
+        <g>
+          <circle cx="8" cy="8" r="6" fill={c} fillOpacity=".55" stroke={c} strokeWidth="1.4" />
+          <path d="M5.5 7.5l2-2.5" stroke="#fff" strokeWidth="1.3" strokeOpacity=".85" />
+        </g>
+      );
+      break;
+    case 'rocket_fuel':
+    case 'canned_food':
+      shape = (
+        <g>
+          <rect x="4" y="2" width="8" height="12" rx="1.5" fill={c} stroke={k} />
+          <rect x="4" y="6.5" width="8" height="3" fill={item === 'canned_food' ? '#ff8a3d' : '#ffd34a'} />
+        </g>
+      );
+      break;
+    case 'perfume':
+      shape = (
+        <g>
+          <rect x="3.5" y="6" width="9" height="8.5" rx="2" fill={c} stroke={k} />
+          <rect x="6.5" y="2.5" width="3" height="3.5" fill="#ffd34a" />
+        </g>
+      );
+      break;
+    case 'jewelry':
+      shape = (
+        <g>
+          <circle cx="8" cy="10" r="4.3" fill="none" stroke={c} strokeWidth="2" />
+          <polygon points="8,1 10.5,3.8 8,6.3 5.5,3.8" fill="#7fe3ff" stroke={k} />
+        </g>
+      );
+      break;
+    case 'adv_chip':
+      shape = (
+        <g>
+          <rect x="2" y="2" width="12" height="12" fill={c} stroke={k} />
+          <rect x="5.5" y="5.5" width="5" height="5" fill="#ffd34a" />
+        </g>
+      );
+      break;
+    case 'satellite':
+      shape = (
+        <g>
+          <rect x="6" y="5" width="4" height="6" fill={c} stroke={k} />
+          <rect x="0.5" y="6" width="5" height="4" fill="#2f6aae" />
+          <rect x="10.5" y="6" width="5" height="4" fill="#2f6aae" />
+        </g>
+      );
+      break;
+    case 'rocket':
+      shape = (
+        <g>
+          <path d="M8 1l3 4.5V12H5V5.5z" fill={c} stroke={k} />
+          <path d="M5 8.5L2.5 13H5zM11 8.5l2.5 4.5H11z" fill="#ff5a5a" />
+          <path d="M6.5 12.5L8 15l1.5-2.5z" fill="#ffa23d" />
+        </g>
+      );
+      break;
     default:
       shape = <polygon points="2,7 6,2 13,4 14,10 9,14 3,12" fill={c} stroke={k} />;
   }
@@ -227,6 +341,85 @@ export function BuildingIcon({ type, size = 36 }: { type: BuildingType; size?: n
           <path d="M8 33l3-20h9l3 20z" fill="#2c3a33" stroke="#5fe08a" />
           <path d="M21 33l2.5-15h7.5l2.5 15z" fill="#2c3a33" stroke="#5fe08a" />
           <circle cx="15.5" cy="25" r="3" fill="#5fe08a" opacity=".7" />
+        </g>
+      );
+      break;
+    case 'fishing_dock':
+      inner = (
+        <g>
+          <rect x="9" y="22" width="22" height="5" fill="#5a3d22" />
+          <rect x="11" y="27" width="2.5" height="6" fill="#3d2a16" />
+          <rect x="26" y="27" width="2.5" height="6" fill="#3d2a16" />
+          <path d="M24 22l6-11" stroke="#9a6b3f" strokeWidth="2" />
+          <path d="M30 11v12" stroke="#dfe6ee" strokeWidth=".8" />
+          <circle cx="30" cy="24" r="2" fill="#ff5a5a" />
+        </g>
+      );
+      break;
+    case 'seaweed_farm':
+      inner = (
+        <g stroke="#5fc07a" strokeWidth="2.2" fill="none" strokeLinecap="round">
+          <path d="M13 32c2-5-2-9 0-14" />
+          <path d="M20 32c-2-5 2-9 0-15" />
+          <path d="M27 32c2-5-2-9 0-13" />
+        </g>
+      );
+      break;
+    case 'clay_pit':
+      inner = (
+        <g>
+          <ellipse cx="20" cy="25" rx="10" ry="6" fill="#4a2e22" stroke="#b87a56" strokeWidth="1.5" />
+          <path d="M17 12l5 12" stroke="#9fb0c4" strokeWidth="2.2" strokeLinecap="round" />
+        </g>
+      );
+      break;
+    case 'lumber_camp':
+      inner = (
+        <g>
+          <rect x="9" y="25" width="22" height="6" fill="#5a3d22" />
+          <circle cx="20" cy="18" r="7" fill="#9fb0c4" stroke="#5d6b7d" />
+          <circle cx="20" cy="18" r="2.2" fill="#2c3440" />
+        </g>
+      );
+      break;
+    case 'flower_garden':
+      inner = (
+        <g>
+          <rect x="10" y="12" width="20" height="18" rx="3" fill="#24331f" stroke="#f07ab8" strokeOpacity=".7" />
+          <circle cx="16" cy="19" r="3" fill="#f07ab8" />
+          <circle cx="24" cy="23" r="3" fill="#ffd34a" />
+          <circle cx="16" cy="19" r="1" fill="#ffc94a" />
+          <circle cx="24" cy="23" r="1" fill="#fff" />
+        </g>
+      );
+      break;
+    case 'oil_pump':
+      inner = (
+        <g>
+          <path d="M12 32l6-14 6 14" stroke="#8a7a9a" strokeWidth="2" fill="none" />
+          <path d="M8 16l22 4" stroke="#c4b8d8" strokeWidth="3" strokeLinecap="round" />
+          <circle cx="9" cy="18" r="3" fill="#8a7a9a" />
+          <rect x="25" y="25" width="7" height="7" fill="#2b2530" stroke="#8a7a9a" />
+        </g>
+      );
+      break;
+    case 'refinery':
+      inner = (
+        <g>
+          <rect x="8" y="20" width="16" height="13" rx="2" fill="#3a2a1c" stroke="#d98a3f" />
+          <rect x="26" y="11" width="6" height="22" fill="#4a3a2a" stroke="#d98a3f" />
+          <circle cx="14" cy="15" r="4.5" fill="#4a3a2a" stroke="#d98a3f" />
+          <path d="M29 11l-2-4 2 2 2-4z" fill="#ffa23d" />
+        </g>
+      );
+      break;
+    case 'geothermal':
+      inner = (
+        <g>
+          <rect x="8" y="22" width="24" height="11" rx="2" fill="#3a1c18" stroke="#ff5a3d" />
+          <path d="M11 22l3-10h6l3 10z" fill="#4a2a24" stroke="#ff5a3d" />
+          <circle cx="16" cy="9" r="3" fill="#dfe6ee" opacity=".4" />
+          <circle cx="27" cy="27" r="2" fill="#ff6a2a" />
         </g>
       );
       break;

@@ -7,10 +7,13 @@ import { deserialize, serialize } from '../src/core/save';
 import { tick } from '../src/core/sim';
 import { hqPosition, idx, newGame } from '../src/core/state';
 import type { GameState } from '../src/core/types';
+import { legacyOffset } from '../src/core/worldgen';
+
+const O = legacyOffset(); // the original map sits in the middle of the big one
 
 function findDeposit(s: GameState, type: DepositId, avoid: Set<number> = new Set()): [number, number] {
-  for (let y = 8; y < 24; y++)
-    for (let x = 8; x < 24; x++) {
+  for (let y = O + 8; y < O + 24; y++)
+    for (let x = O + 8; x < O + 24; x++) {
       const i = idx(s, x, y);
       if (s.world.deposits[i] === type && !avoid.has(i)) return [x, y];
     }
@@ -56,7 +59,7 @@ describe('production chain', () => {
     const [x2, y2] = findDeposit(s, 'iron_ore', new Set([idx(s, x1, y1)]));
     const m1 = placeBuilding(s, 'miner', x1, y1);
     const m2 = placeBuilding(s, 'miner', x2, y2);
-    const f = placeBuilding(s, 'furnace', 15, 12);
+    const f = placeBuilding(s, 'furnace', O + 15, O + 12);
     if (!m1.ok || !m2.ok || !f.ok) throw new Error('place failed');
     expect(createLink(s, m1.value.id, f.value.id).ok).toBe(true);
     expect(createLink(s, m2.value.id, f.value.id).ok).toBe(true);
@@ -71,7 +74,7 @@ describe('production chain', () => {
     s.money = 10000;
     const [x, y] = findDeposit(s, 'copper_ore');
     const m = placeBuilding(s, 'miner', x, y);
-    const f = placeBuilding(s, 'furnace', 12, 12); // defaults to the iron bar recipe
+    const f = placeBuilding(s, 'furnace', O + 12, O + 12); // defaults to the iron bar recipe
     if (!m.ok || !f.ok) throw new Error();
     expect(createLink(s, m.value.id, f.value.id).ok).toBe(true);
     run(s, 20);
@@ -103,7 +106,7 @@ describe('production chain', () => {
 
     const [cx, cy] = findDeposit(s, 'coal', used);
     const cm = placeBuilding(s, 'miner', cx, cy);
-    const plant = placeBuilding(s, 'coal_plant', 18, 12);
+    const plant = placeBuilding(s, 'coal_plant', O + 18, O + 12);
     if (!cm.ok || !plant.ok) throw new Error(JSON.stringify(plant));
     expect(createLink(s, cm.value.id, plant.value.id).ok).toBe(true);
     run(s, 30);
@@ -115,7 +118,7 @@ describe('production chain', () => {
     s.money = 10000;
     const [x, y] = findDeposit(s, 'iron_ore');
     const m = placeBuilding(s, 'miner', x, y);
-    const w = placeBuilding(s, 'warehouse', 14, 11);
+    const w = placeBuilding(s, 'warehouse', O + 14, O + 11);
     if (!m.ok || !w.ok) throw new Error();
     createLink(s, m.value.id, w.value.id);
     run(s, 40);

@@ -1,6 +1,8 @@
-import { POWER, VEINS } from '../config/balance';
-import { SAVE_VERSION, addRareDeposits, freshMarkets, generateGrades } from './state';
+import { BALANCE, POWER, TERRAIN, VEINS } from '../config/balance';
+import { RETIRED_PERK_COSTS } from '../config/meta';
+import { SAVE_VERSION, addRareDeposits, freshMarkets, generateGrades, invalidateOccupancy } from './state';
 import type { GameState } from './types';
+import { buildWorld, legacyOffset } from './worldgen';
 
 const KEY = 'ore-to-empire/save';
 
@@ -72,7 +74,51 @@ export function migrate(data: GameState): GameState | null {
     d.veinTimer = VEINS.firstAfter;
     d.version = 3;
   }
+  if (d.version < 4) {
+    expandWorld(d);
+    d.licences = [];
+    // perks that only worked when selling the company: give their shares back
+    let refund = 0;
+    for (const id of Object.keys(RETIRED_PERK_COSTS)) {
+      const lvl = d.prestige.perks[id] ?? 0;
+      for (let i = 0; i < lvl; i++) refund += RETIRED_PERK_COSTS[id][i] ?? 0;
+      delete d.prestige.perks[id];
+    }
+    d.prestige.shares += refund;
+    d.version = 4;
+  }
   return d;
+}
+
+/** v1.2: the 32×32 map becomes the middle of a 64×64 one; everything on it moves with it */
+function expandWorld(d: GameState) {
+  const L = BALANCE.legacySize;
+  if (d.world.size !== L) {
+    d.world.terrain ??= new Array(d.world.size * d.world.size).fill(TERRAIN.land);
+    return;
+  }
+  const off = legacyOffset();
+  const w = buildWorld(d.seed, { deposits: d.world.deposits, grade: d.world.grade });
+  const P = BALANCE.plotSize;
+  const oldN = L / P;
+  const n = w.size / P;
+  const shift = off / P;
+  const plots = new Array(n * n).fill(false);
+  for (let py = 0; py < oldN; py++) for (let px = 0; px < oldN; px++) if (d.world.plots[py * oldN + px]) plots[(py + shift) * n + px + shift] = true;
+  d.world = { size: w.size, deposits: w.deposits, grade: w.grade, terrain: w.terrain, plots };
+  for (const b of d.buildings) {
+    b.x += off;
+    b.y += off;
+  }
+  for (const belt of d.belts) {
+    belt.path = belt.path.map(([x, y]) => [x + off, y + off] as [number, number]);
+    belt.points = belt.points.map(([x, y]) => [x + off, y + off] as [number, number]);
+  }
+  for (const v of d.veins ?? []) {
+    v.x += off;
+    v.y += off;
+  }
+  invalidateOccupancy(d);
 }
 
 export const localSave: SaveStore = {

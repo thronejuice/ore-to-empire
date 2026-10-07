@@ -1,6 +1,7 @@
-import { PRESTIGE } from '../config/meta';
+import { ZONES, ZONE_ORDER } from '../config/balance';
 import { dailyClaimableCount } from '../core/daily';
 import { metaUnlocked } from '../core/quests';
+import { licenceState } from '../core/zones';
 import type { GameState } from '../core/types';
 import type { Panel } from '../game';
 import { onlineConfigured } from '../online/config';
@@ -20,9 +21,9 @@ export const NAV: NavEntry[] = [
   { panel: 'daily', label: 'ui.daily', visible: metaUnlocked, badge: (s) => dailyClaimableCount(s) },
   {
     panel: 'prestige',
-    label: 'ui.prestige',
-    visible: (s) => s.prestige.count > 0 || s.stats.totalEarned >= PRESTIGE.minRunEarned / 4,
-    badge: (s) => s.stats.totalEarned >= PRESTIGE.minRunEarned,
+    label: 'ui.expansion',
+    visible: (s) => s.research.done.length > 0 || s.prestige.shares > 0,
+    badge: (s) => ZONE_ORDER.some((z) => licenceState(s, z) === 'available' && s.money >= ZONES[z].licence),
   },
   { panel: 'shop', label: 'ui.shop', visible: () => true },
   { panel: 'account', label: 'ui.account', visible: () => onlineConfigured },
