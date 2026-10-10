@@ -1843,6 +1843,9 @@ select:focus-visible {
   gap: 8px;
 }
 .whats-new h2 {
+  flex: none;
+}
+.whats-new h2 {
   margin: 0;
   font-size: 20px;
 }
@@ -1858,6 +1861,10 @@ select:focus-visible {
   margin: 4px 0 8px;
   padding-left: 20px;
   line-height: 1.55;
+  /* the list scrolls on short screens so the buttons below always stay visible */
+  flex: 1 1 auto;
+  min-height: 0;
+  overflow-y: auto;
 }
 .whats-new li + li {
   margin-top: 6px;

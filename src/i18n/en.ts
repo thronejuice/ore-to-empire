@@ -714,6 +714,7 @@ export const en = {
   'wh.keepHint': 'Tap "keep" to choose how many stay in the warehouse; only the extra goes out on belts. Pick what each outgoing belt carries in the belt list below.',
   'err.badAmount': 'Pick one of the listed amounts',
   'news.10': 'Warehouses list what their incoming belts will bring, so you can set how many to keep before anything arrives — tap "keep" and pick an amount in one go.',
+  'news.11': "The What's new popup scrolls on small screens, so its buttons are never cut off.",
 };
 
 export type Dict = Record<keyof typeof en, string>;
