@@ -1,0 +1,137 @@
+diff --git a/CHANGELOG.md b/CHANGELOG.md
+index 010208e..64b3fd7 100644
+--- a/CHANGELOG.md
++++ b/CHANGELOG.md
+@@ -9,6 +9,11 @@
+ 
+ <!-- release-script: each "## [x.y.z]" section is copied into releases/vx.y.z/CHANGES.md -->
+ 
++## [1.3.2] - 2026-10-10
++
++### แก้ไข
++- **หน้าต่าง "มีอะไรใหม่" ปุ่มถูกบัง:** เมื่อจอเล็ก รายการยาวเกินจอจนปุ่ม "รับทราบ" และ "ดูวิธีเล่น" ตกออกไปนอกกล่องและกดไม่ได้ ตอนนี้รายการเลื่อนดูได้ และปุ่มอยู่ด้านล่างเสมอ
++
+ ## [1.3.1] - 2026-10-07
+ 
+ ### ปรับปรุง
+diff --git a/package-lock.json b/package-lock.json
+index b1f93ce..eb2d2c5 100644
+--- a/package-lock.json
++++ b/package-lock.json
+@@ -1,12 +1,12 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "1.3.1",
++  "version": "1.3.2",
+   "lockfileVersion": 3,
+   "requires": true,
+   "packages": {
+     "": {
+       "name": "ore-to-empire",
+-      "version": "1.3.1",
++      "version": "1.3.2",
+       "dependencies": {
+         "@supabase/supabase-js": "^2.117.2",
+         "pixi.js": "^8.22.0",
+diff --git a/package.json b/package.json
+index d792380..2be19be 100644
+--- a/package.json
++++ b/package.json
+@@ -1,6 +1,6 @@
+ {
+   "name": "ore-to-empire",
+-  "version": "1.3.1",
++  "version": "1.3.2",
+   "scripts": {
+     "dev": "vite",
+     "build": "tsc --noEmit && vite build",
+@@ -27,4 +27,4 @@
+   },
+   "private": true,
+   "type": "module"
+-}
+\ No newline at end of file
++}
+diff --git a/src/i18n/en.ts b/src/i18n/en.ts
+index ee4113a..ccb4f98 100644
+--- a/src/i18n/en.ts
++++ b/src/i18n/en.ts
+@@ -714,6 +714,7 @@ export const en = {
+   'wh.keepHint': 'Tap "keep" to choose how many stay in the warehouse; only the extra goes out on belts. Pick what each outgoing belt carries in the belt list below.',
+   'err.badAmount': 'Pick one of the listed amounts',
+   'news.10': 'Warehouses list what their incoming belts will bring, so you can set how many to keep before anything arrives — tap "keep" and pick an amount in one go.',
++  'news.11': "The What's new popup scrolls on small screens, so its buttons are never cut off.",
+ };
+ 
+ export type Dict = Record<keyof typeof en, string>;
+diff --git a/src/i18n/th.ts b/src/i18n/th.ts
+index 33e2252..13740e5 100644
+--- a/src/i18n/th.ts
++++ b/src/i18n/th.ts
+@@ -716,4 +716,5 @@ export const th: Dict = {
+   'wh.keepHint': 'กดปุ่ม "เก็บ" เพื่อเลือกจำนวนที่เก็บไว้ในโกดัง ส่งออกเฉพาะส่วนที่เกิน เลือกว่าสายพานขาออกแต่ละเส้นส่งอะไรได้ในรายการสายพานด้านล่าง',
+   'err.badAmount': 'เลือกจำนวนจากตัวเลือกที่มี',
+   'news.10': 'โกดังแสดงสินค้าที่สายพานขาเข้าจะส่งมา ตั้งจำนวนเก็บสำรองได้ทันทีไม่ต้องรอของ กดปุ่ม "เก็บ" แล้วเลือกจำนวนได้ในครั้งเดียว',
++  'news.11': 'หน้าต่างมีอะไรใหม่เลื่อนดูได้เมื่อจอเล็ก และปุ่มรับทราบกับดูวิธีเล่นจะไม่ถูกบังอีกต่อไป',
+ };
+diff --git a/src/ui/WhatsNew.tsx b/src/ui/WhatsNew.tsx
+index 5bb7626..e97a353 100644
+--- a/src/ui/WhatsNew.tsx
++++ b/src/ui/WhatsNew.tsx
+@@ -17,6 +17,7 @@ const NOTES: { key: string; version: string }[] = [
+   { key: 'news.8', version: '1.3.0' },
+   { key: 'news.9', version: '1.3.0' },
+   { key: 'news.10', version: '1.3.1' },
++  { key: 'news.11', version: '1.3.2' },
+ ];
+ 
+ function newer(a: string, b: string | undefined): boolean {
+diff --git a/src/ui/styles.css b/src/ui/styles.css
+index 2c17f23..2f4bf48 100644
+--- a/src/ui/styles.css
++++ b/src/ui/styles.css
+@@ -1842,6 +1842,9 @@ select:focus-visible {
+   padding: 22px 22px 18px;
+   gap: 8px;
+ }
++.whats-new h2 {
++  flex: none;
++}
+ .whats-new h2 {
+   margin: 0;
+   font-size: 20px;
+@@ -1858,6 +1861,10 @@ select:focus-visible {
+   margin: 4px 0 8px;
+   padding-left: 20px;
+   line-height: 1.55;
++  /* the list scrolls on short screens so the buttons below always stay visible */
++  flex: 1 1 auto;
++  min-height: 0;
++  overflow-y: auto;
+ }
+ .whats-new li + li {
+   margin-top: 6px;
+diff --git a/tests/intro.test.ts b/tests/intro.test.ts
+index 5d0f2ec..5191c40 100644
+--- a/tests/intro.test.ts
++++ b/tests/intro.test.ts
+@@ -26,12 +26,13 @@ describe('intro popup flag', () => {
+ describe("what's new notes", () => {
+   it('shows every note newer than the version the player last saw', async () => {
+     const { notesFor } = await import('../src/ui/WhatsNew');
+-    expect(notesFor('1.1.1')).toEqual(['news.1', 'news.2', 'news.3', 'news.4', 'news.5', 'news.6', 'news.7', 'news.8', 'news.9', 'news.10']);
+-    expect(notesFor('1.2.0')).toEqual(['news.5', 'news.6', 'news.7', 'news.8', 'news.9', 'news.10']);
+-    expect(notesFor('1.2.1')).toEqual(['news.7', 'news.8', 'news.9', 'news.10']);
+-    expect(notesFor('1.3.0')).toEqual(['news.10']);
+-    expect(notesFor('1.3.1')).toEqual([]);
+-    expect(notesFor(undefined).length).toBe(10);
++    expect(notesFor('1.1.1')).toEqual(['news.1', 'news.2', 'news.3', 'news.4', 'news.5', 'news.6', 'news.7', 'news.8', 'news.9', 'news.10', 'news.11']);
++    expect(notesFor('1.2.0')).toEqual(['news.5', 'news.6', 'news.7', 'news.8', 'news.9', 'news.10', 'news.11']);
++    expect(notesFor('1.2.1')).toEqual(['news.7', 'news.8', 'news.9', 'news.10', 'news.11']);
++    expect(notesFor('1.3.0')).toEqual(['news.10', 'news.11']);
++    expect(notesFor('1.3.1')).toEqual(['news.11']);
++    expect(notesFor('1.3.2')).toEqual([]);
++    expect(notesFor(undefined).length).toBe(11);
+     expect(notesFor('1.10.0')).toEqual([]); // compared as numbers, not text
+   });
+ });
